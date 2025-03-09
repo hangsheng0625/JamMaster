@@ -1,4 +1,4 @@
-import react from 'react'
+import React, { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -17,19 +17,27 @@ function RegisterAndLogout() {
 }
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [count, setCount] = useState(0)  // Now we can use useState
 
   return (
-    <>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<ProtectedRoute> <Home/></ProtectedRoute>} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<RegisterAndLogout />} />
-          <Route path="*" element={<NotFound />} /><Route/>
-        </Routes>
-      </BrowserRouter>
-    </>
+    <BrowserRouter>
+      <Routes>
+        <Route 
+          path="/" 
+          element={
+            <ProtectedRoute>
+              <Home />
+            </ProtectedRoute>
+          } 
+        />
+        <Route path="/login" element={<Login />} />
+        <Route path="/logout" element={<Logout />} />
+        <Route path="/register" element={<RegisterAndLogout />} />
+        {/* Optional Logout route if you want it */}
+        {/* <Route path="/logout" element={<Logout />} /> */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
