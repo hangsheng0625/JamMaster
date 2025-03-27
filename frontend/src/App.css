@@ -1,0 +1,41 @@
+main{
+  background-color: #FDF5FF;
+  width: 800px;
+  height: 680px;
+  border-radius: 24px;
+  display:flex;
+  flex-direction: column;
+  display: flex;
+  justify-content: center;  
+  align-items: center;
+}
+
+button{
+  background-color: #7D1590;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 12px;
+  border:none;
+  padding: 12px 24px;
+  margin-bottom: 40px;
+}
+
+h1{
+  margin-top: 29px;
+  margin-bottom: 10px;
+  font-size: 48px;
+  font-weight: 600;
+}
+
+.robot{
+  width: 160px;
+  height: 160px;
+  margin-top: 40px;
+  margin-bottom:33px;
+}
+
+.piano{
+  width: 650px;
+}
