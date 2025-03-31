@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "ml5": "^1.0.1",
+    "tone": "^15.0.4"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.0"
+  }
+}
