@@ -111,6 +111,9 @@ const Piano = () => {
   const [startTime, setStartTime] = useState(null);
   const [activeKeys, setActiveKeys] = useState({});
   
+  // Track mouse-played notes
+  const mouseNotesRef = useRef({});
+  
   const synthRef = useRef(null);
   
   // Map of keyboard keys to piano notes
@@ -123,34 +126,69 @@ const Piano = () => {
   
   // Initialize Tone.js
   useEffect(() => {
-    // Create a polyphonic synth
+    // Don't start AudioContext here
     synthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
     
-    // Initialize audio context on user interaction
-    const initAudio = () => {
-      if (Tone.context.state !== 'running') {
-        Tone.start();
-      }
-      window.removeEventListener('click', initAudio);
-      window.removeEventListener('keydown', initAudio);
-    };
-    
-    window.addEventListener('click', initAudio);
-    window.addEventListener('keydown', initAudio);
-    
+    // The rest of your cleanup code...
     return () => {
-      window.removeEventListener('click', initAudio);
-      window.removeEventListener('keydown', initAudio);
       if (synthRef.current) {
         synthRef.current.dispose();
       }
     };
   }, []);
+
+  // Create a function to start audio on user interaction
+  const startAudio = () => {
+    if (Tone.context.state !== 'running') {
+      Tone.start();
+      console.log('AudioContext started successfully');
+    }
+  };
+  
+  // Record note start - used by both keyboard and mouse
+  const recordNoteStart = (key) => {
+    if (!isRecording) return;
+    
+    const currentTime = Date.now();
+    const timestamp = currentTime - startTime;
+    
+    // Add to recorded notes with zero duration initially
+    setRecordedNotes(prev => [
+      ...prev, 
+      { note: keyMap[key], key, timestamp, duration: 0, id: `${key}-${currentTime}` }
+    ]);
+    
+    // For mouse interactions, keep track of which note was started
+    mouseNotesRef.current[key] = currentTime;
+  };
+  
+  // Record note end - used by both keyboard and mouse
+  const recordNoteEnd = (key) => {
+    if (!isRecording) return;
+    
+    const releaseTime = Date.now() - startTime;
+    
+    // Find the most recent note with this key and update its duration
+    setRecordedNotes(prev => 
+      prev.map(note => {
+        if (note.key === key && note.duration === 0) {
+          return { ...note, duration: releaseTime - note.timestamp };
+        }
+        return note;
+      })
+    );
+    
+    // Clear from mouse tracking
+    delete mouseNotesRef.current[key];
+  };
   
   // Handle keyboard events
   useEffect(() => {
     const handleKeyDown = (e) => {
       const key = e.key.toLowerCase();
+      
+      // Start audio if needed
+      startAudio();
       
       // Prevent repeating keys when held down
       if (e.repeat) return;
@@ -161,13 +199,7 @@ const Piano = () => {
         
         // Record the note if recording is active
         if (isRecording) {
-          const currentTime = Date.now();
-          const timestamp = currentTime - startTime;
-          
-          setRecordedNotes(prev => [
-            ...prev, 
-            { note: keyMap[key], key, timestamp, duration: 0, id: `${key}-${currentTime}` }
-          ]);
+          recordNoteStart(key);
         }
         
         // Set the key as active
@@ -184,16 +216,7 @@ const Piano = () => {
         
         // Update the duration if recording
         if (isRecording) {
-          const releaseTime = Date.now() - startTime;
-          
-          setRecordedNotes(prev => 
-            prev.map(note => {
-              if (note.key === key && note.duration === 0) {
-                return { ...note, duration: releaseTime - note.timestamp };
-              }
-              return note;
-            })
-          );
+          recordNoteEnd(key);
         }
         
         // Remove key from active keys
@@ -216,9 +239,8 @@ const Piano = () => {
   
   // Play a note
   const playNote = (key) => {
-    if (Tone.context.state !== 'running') {
-      Tone.start();
-    }
+    startAudio(); // Ensure audio context is running
+    
     const note = keyMap[key];
     if (synthRef.current) {
       synthRef.current.triggerAttack(note);
@@ -240,6 +262,7 @@ const Piano = () => {
       setRecordedNotes([]);
       setStartTime(Date.now());
       setIsRecording(true);
+      mouseNotesRef.current = {}; // Reset mouse notes tracking
     } else {
       // Stop recording
       setIsRecording(false);
@@ -249,9 +272,7 @@ const Piano = () => {
   
   // Play back the recording
   const playRecording = () => {
-    if (Tone.context.state !== 'running') {
-      Tone.start();
-    }
+    startAudio(); // Ensure audio context is running
     
     // Schedule all notes to play at the right time
     const now = Tone.now();
@@ -335,11 +356,30 @@ const Piano = () => {
         data-note={note}
         key={keyLabel}
         onMouseDown={() => {
+          // Start audio
+          startAudio();
+          
+          // Play the note
           playNote(key);
+          
+          // Record the note if recording is active
+          if (isRecording) {
+            recordNoteStart(key);
+          }
+          
+          // Set the key as active
           setActiveKeys(prev => ({ ...prev, [key]: true }));
         }}
         onMouseUp={() => {
+          // Stop the note
           stopNote(key);
+          
+          // Record note end if recording is active
+          if (isRecording && mouseNotesRef.current[key]) {
+            recordNoteEnd(key);
+          }
+          
+          // Set the key as inactive
           setActiveKeys(prev => {
             const newActiveKeys = { ...prev };
             delete newActiveKeys[key];
@@ -348,7 +388,15 @@ const Piano = () => {
         }}
         onMouseLeave={() => {
           if (activeKeys[key]) {
+            // Stop the note
             stopNote(key);
+            
+            // Record note end if recording is active
+            if (isRecording && mouseNotesRef.current[key]) {
+              recordNoteEnd(key);
+            }
+            
+            // Set the key as inactive
             setActiveKeys(prev => {
               const newActiveKeys = { ...prev };
               delete newActiveKeys[key];
@@ -356,25 +404,32 @@ const Piano = () => {
             });
           }
         }}
+        onTouchStart={() => {
+          // For mobile support
+          startAudio();
+          playNote(key);
+          if (isRecording) {
+            recordNoteStart(key);
+          }
+          setActiveKeys(prev => ({ ...prev, [key]: true }));
+        }}
+        onTouchEnd={() => {
+          // For mobile support
+          stopNote(key);
+          if (isRecording && mouseNotesRef.current[key]) {
+            recordNoteEnd(key);
+          }
+          setActiveKeys(prev => {
+            const newActiveKeys = { ...prev };
+            delete newActiveKeys[key];
+            return newActiveKeys;
+          });
+        }}
       >
         <span className="key-label">{keyLabel}</span>
         <span className="note-label">{note}</span>
       </div>
     );
-  };
-  
-  // Calculate positions for black keys
-  const blackKeyPositions = {
-    '2': 10, // C#4
-    '3': 25, // D#4
-    '5': 40, // F#4
-    '6': 55, // G#4
-    '7': 70, // A#4
-    '9': 85, // C#5 
-    '0': 100, // D#5
-    's': 115, // F#5
-    'd': 130, // G#5
-    'f': 145  // A#5
   };
 
   return (
@@ -390,9 +445,12 @@ const Piano = () => {
       
       <button 
         className={`recording-button ${isRecording ? 'recording' : ''}`}
-        onClick={toggleRecording}
+        onClick={() => {
+          startAudio(); // Start audio context first
+          toggleRecording(); // Then toggle recording
+        }}
       >
-        <img src={isRecording ? stopRecording: recording} alt="recording icon" className="icon"/>
+        <img src={isRecording ? stopRecording : recording} alt="Recording icon" />
         {isRecording ? 'Stop Recording' : 'Start Recording'}
       </button>
       
@@ -454,7 +512,6 @@ const Piano = () => {
           </div>
         </div>
       )}
-      
     </div>
   );
 };
