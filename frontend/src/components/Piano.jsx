@@ -278,6 +278,25 @@
       onMidiSaved(validNotes); // MODIFIED LINE
     }
     // --- !!! END TRIGGER !!! ---
+    const midiData = createSimpleMidiFile(recordedNotes);
+    
+    // Create a Blob and download link
+    const blob = new Blob([midiData], { type: 'audio/midi' });
+    const url = URL.createObjectURL(blob);
+    
+    const downloadLink = document.createElement('a');
+    downloadLink.href = url;
+    downloadLink.download = `piano-recording-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.mid`;
+    
+    // Trigger download
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    
+    // Clean up blob URL
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+    
+    console.log(`MIDI file saved with ${recordedNotes.length} notes`);
   };
 
    // --- Render Piano Key Function ---
