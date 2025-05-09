@@ -22,6 +22,8 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
     const [isPlayingOriginal, setIsPlayingOriginal] = useState(false);
     const [originalPlaybackTime, setOriginalPlaybackTime] = useState(0); // in ms
     const [originalDuration, setOriginalDuration] = useState(0); // in ms
+    // Add state to temporarily disable progress bar transition
+    const [disableTransition, setDisableTransition] = useState(false);
 
     // --- Refs for Original Playback ---
     const originalSynthRef = useRef(null);
@@ -52,17 +54,25 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
         // Cleanup on unmount
         return () => {
             stopOriginalPlayback(true); // Stop playback and clear events
+            
+            // Complete cleanup of Tone.js
             if (originalSynthRef.current) {
+                originalSynthRef.current.releaseAll();
                 originalSynthRef.current.dispose();
+                originalSynthRef.current = null;
             }
+            
             if (playbackIntervalRef.current) {
                 clearInterval(playbackIntervalRef.current);
+                playbackIntervalRef.current = null;
             }
-            // Clear any lingering Tone.Transport events if necessary
+            
+            // Clear any lingering Tone.Transport events
             scheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
             scheduledEventsRef.current = [];
             
-            // Make sure Transport is stopped
+            // Make sure Transport is completely reset
+            Tone.Transport.cancel(); // Cancel all events
             Tone.Transport.stop();
             Tone.Transport.position = 0;
         };
@@ -82,21 +92,31 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
 
         await startAudio(); // Ensure audio context is running
 
-        // Stop any previous playback completely and reset
+        // CRITICAL: Always reset the progress bar to 0 when starting playback
+        setOriginalPlaybackTime(0);
+        let startPosition = 0; // Always start from the beginning
+
+        // IMPORTANT: Stop previous playback and completely reset all Tone.js state
         stopOriginalPlayback(true);
         
-        // Reset Transport position to 0 (CRITICAL FIX)
+        // Completely clean up transport and reset it
+        Tone.Transport.cancel(); // Cancel ALL scheduled events
         Tone.Transport.stop();
         Tone.Transport.position = 0;
         
-        // Start transport fresh
+        // Also reset the synth to ensure no lingering notes
+        if (originalSynthRef.current) {
+            originalSynthRef.current.releaseAll();
+            // Recreate the synth to ensure a completely fresh state
+            originalSynthRef.current.dispose();
+            originalSynthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
+        }
+        
+        // Now start a completely fresh transport
         Tone.Transport.start();
         
         setIsPlayingOriginal(true);
         
-        // Start from the current position or from the beginning if playback completed
-        const startPosition = originalPlaybackTime >= originalDuration ? 0 : originalPlaybackTime;
-        setOriginalPlaybackTime(startPosition);
         scheduledEventsRef.current = []; // Clear previous event IDs
         
         // Record the current time for progress tracking
@@ -131,7 +151,10 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
             const elapsed = Date.now() - startTimeRef.current;
             
             if (elapsed >= originalDuration) {
-                stopOriginalPlayback(false, true); // Auto-stop at the end, reset position
+                // Set playback time to exactly the duration (fill progress bar completely)
+                setOriginalPlaybackTime(originalDuration);
+                // Then stop playback with completed flag true
+                stopOriginalPlayback(false, true); // Auto-stop at the end, keep position at end
             } else {
                 setOriginalPlaybackTime(elapsed);
             }
@@ -140,7 +163,11 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
         // Schedule stop at the end of playback
         const remainingDuration = (originalDuration - startPosition) / 1000; // seconds
         const stopEventId = Tone.Transport.scheduleOnce(() => {
-            stopOriginalPlayback(false, true); // Stop naturally and reset position
+            // This ensures that when we reach the end naturally, we:
+            // 1. Stop playback
+            // 2. Set the progress to 100% (done in stopOriginalPlayback with playbackCompleted=true)
+            // 3. Don't reset to beginning
+            stopOriginalPlayback(false, true); 
         }, remainingDuration);
         scheduledEventsRef.current.push(stopEventId);
     };
@@ -157,10 +184,11 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
             playbackIntervalRef.current = null;
         }
 
-        // Only reset time if playback completed or we're explicitly resetting
-        if (playbackCompleted || originalPlaybackTime >= originalDuration) {
-            setOriginalPlaybackTime(0); // Reset time when completed or finished
+        // If playback completed naturally, set time to the full duration
+        if (playbackCompleted) {
+            setOriginalPlaybackTime(originalDuration); // Set to full duration when completed
         }
+        // Don't reset the time otherwise, so it stays where it stopped
         
         if (cancelEvents) {
             // Cancel scheduled Tone events
@@ -168,10 +196,13 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
             scheduledEventsRef.current = []; // Clear the stored IDs
 
             // Stop any currently sounding notes from the synth
-            originalSynthRef.current?.releaseAll();
+            if (originalSynthRef.current) {
+                originalSynthRef.current.releaseAll();
+            }
             
-            // IMPORTANT FIX: Don't stop Transport here, just cancel events
-            // This allows Transport to continue running but with our events removed
+            // Also cancel any lingering events on the Transport
+            // This helps prevent echo effects
+            Tone.Transport.cancel();
         }
     };
 
@@ -180,7 +211,18 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
         if (isPlayingOriginal) {
             stopOriginalPlayback(true, false); // Manually stop, cancel events, don't reset position
         } else {
-            playOriginalRecording();
+            // Reset the progress bar without transition
+            setDisableTransition(true);
+            setOriginalPlaybackTime(0);
+            
+            // Use requestAnimationFrame to ensure the DOM updates before continuing
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    // Re-enable transition after the DOM has updated
+                    setDisableTransition(false);
+                    playOriginalRecording();
+                });
+            });
         }
     };
 
@@ -240,7 +282,10 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
                                 {/* Update progress bar style */}
                                 <div
                                     className="progress-bar"
-                                    style={{ width: `${Math.min(100, originalProgress)}%` }} // Ensure width doesn't exceed 100%
+                                    style={{ 
+                                        width: `${Math.min(100, originalProgress)}%`,
+                                        transition: disableTransition ? 'none' : 'width 0.3s ease-in-out'
+                                    }}
                                 ></div>
                             </div>
                             {/* Display formatted total duration */}
