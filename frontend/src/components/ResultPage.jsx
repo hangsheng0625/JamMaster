@@ -27,6 +27,8 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
     const originalSynthRef = useRef(null);
     const playbackIntervalRef = useRef(null);
     const scheduledEventsRef = useRef([]); // Store Tone event IDs
+    const pausedAtTimeRef = useRef(0); // Store time position when paused
+    const startTimeRef = useRef(0); // To track when playback started
 
     // --- Initialize Synth and Calculate Duration ---
     useEffect(() => {
@@ -57,8 +59,12 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
                 clearInterval(playbackIntervalRef.current);
             }
             // Clear any lingering Tone.Transport events if necessary
-             scheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
-             scheduledEventsRef.current = [];
+            scheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
+            scheduledEventsRef.current = [];
+            
+            // Make sure Transport is stopped
+            Tone.Transport.stop();
+            Tone.Transport.position = 0;
         };
     }, [originalNotes]); // Rerun if originalNotes changes
 
@@ -76,114 +82,111 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
 
         await startAudio(); // Ensure audio context is running
 
-        // Ensure Tone.Transport is started
-        if (Tone.Transport.state !== 'started') {
-            await Tone.Transport.start();
-        }
-
-
-        stopOriginalPlayback(true); // Clear previous state/events before starting new playback
+        // Stop any previous playback completely and reset
+        stopOriginalPlayback(true);
+        
+        // Reset Transport position to 0 (CRITICAL FIX)
+        Tone.Transport.stop();
+        Tone.Transport.position = 0;
+        
+        // Start transport fresh
+        Tone.Transport.start();
+        
         setIsPlayingOriginal(true);
-        setOriginalPlaybackTime(0);
+        
+        // Start from the current position or from the beginning if playback completed
+        const startPosition = originalPlaybackTime >= originalDuration ? 0 : originalPlaybackTime;
+        setOriginalPlaybackTime(startPosition);
         scheduledEventsRef.current = []; // Clear previous event IDs
+        
+        // Record the current time for progress tracking
+        startTimeRef.current = Date.now() - startPosition;
 
-        const now = Tone.now(); // Use Tone's context time
-
+        // Schedule all notes relative to the Transport timeline
         originalNotes.forEach(note => {
             if (note.duration > 0 && note.timestamp >= 0) {
-                 const startTimeSec = note.timestamp / 1000; // Relative to Transport start
-                 const durationSec = note.duration / 1000;
+                // Only schedule notes that should play after our current position
+                if (note.timestamp >= startPosition) {
+                    const adjustedStartTime = (note.timestamp - startPosition) / 1000; // Convert to seconds
+                    const durationSec = note.duration / 1000;
 
-                // Schedule using Tone.Transport for better timing control
-                 const eventId = Tone.Transport.scheduleOnce((time) => {
-                    originalSynthRef.current?.triggerAttackRelease(
-                        note.note,
-                        durationSec,
-                        time // Use the exact scheduled time
-                    );
-                 }, startTimeSec);
-                 scheduledEventsRef.current.push(eventId); // Store event ID for cancellation
-
+                    // Schedule using Tone.Transport for better timing control
+                    const eventId = Tone.Transport.scheduleOnce((time) => {
+                        originalSynthRef.current?.triggerAttackRelease(
+                            note.note,
+                            durationSec,
+                            time // Use the exact scheduled time
+                        );
+                    }, adjustedStartTime);
+                    scheduledEventsRef.current.push(eventId); // Store event ID for cancellation
+                }
             } else {
-                 console.warn("Skipping invalid note in original recording:", note);
+                console.warn("Skipping invalid note in original recording:", note);
             }
         });
 
-        // Update progress bar using an interval based on Transport position
-        const startTimeMs = Date.now();
+        // Update progress bar using an interval
         playbackIntervalRef.current = setInterval(() => {
-            // Use elapsed time since start, clamped by duration
-            const elapsed = Date.now() - startTimeMs;
-             if (elapsed >= originalDuration) {
-                 stopOriginalPlayback(false); // Auto-stop at the end
-             } else {
+            // Calculate elapsed time since playback started
+            const elapsed = Date.now() - startTimeRef.current;
+            
+            if (elapsed >= originalDuration) {
+                stopOriginalPlayback(false, true); // Auto-stop at the end, reset position
+            } else {
                 setOriginalPlaybackTime(elapsed);
-             }
+            }
         }, 50); // Update interval (e.g., every 50ms)
 
-        // Schedule stop using Tone.Transport
-         const stopEventId = Tone.Transport.scheduleOnce(() => {
-             stopOriginalPlayback(false); // Stop naturally without cancelling events
-         }, originalDuration / 1000); // Schedule stop at the calculated end time
-         scheduledEventsRef.current.push(stopEventId);
-
-
+        // Schedule stop at the end of playback
+        const remainingDuration = (originalDuration - startPosition) / 1000; // seconds
+        const stopEventId = Tone.Transport.scheduleOnce(() => {
+            stopOriginalPlayback(false, true); // Stop naturally and reset position
+        }, remainingDuration);
+        scheduledEventsRef.current.push(stopEventId);
     };
 
     // --- Stop Original Recording Logic ---
-    const stopOriginalPlayback = (cancelEvents = true) => {
+    const stopOriginalPlayback = (cancelEvents = true, playbackCompleted = false) => {
         setIsPlayingOriginal(false);
+        
+        // Store the current playback time when pausing
+        pausedAtTimeRef.current = originalPlaybackTime;
+        
         if (playbackIntervalRef.current) {
             clearInterval(playbackIntervalRef.current);
             playbackIntervalRef.current = null;
         }
 
-        // Reset time only if stopping manually or at the very end
-        if (cancelEvents || originalPlaybackTime >= originalDuration) {
-             setOriginalPlaybackTime(0); // Reset time when manually stopped or finished
+        // Only reset time if playback completed or we're explicitly resetting
+        if (playbackCompleted || originalPlaybackTime >= originalDuration) {
+            setOriginalPlaybackTime(0); // Reset time when completed or finished
         }
-
-
+        
         if (cancelEvents) {
-             // Cancel scheduled Tone events
+            // Cancel scheduled Tone events
             scheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
             scheduledEventsRef.current = []; // Clear the stored IDs
 
-             // Stop any currently sounding notes from the synth
-             originalSynthRef.current?.releaseAll();
-
-             // Ensure transport stops if nothing else is scheduled
-              if (Tone.Transport.state === 'started') {
-                // Check if any other events might be scheduled? For safety, maybe don't stop transport globally here
-                // Or only stop if it was started specifically by this component?
-                 // Let's be cautious and avoid stopping transport globally unless sure.
-                 // Tone.Transport.stop(); // Maybe risky if other components use Transport
-              }
-
+            // Stop any currently sounding notes from the synth
+            originalSynthRef.current?.releaseAll();
+            
+            // IMPORTANT FIX: Don't stop Transport here, just cancel events
+            // This allows Transport to continue running but with our events removed
         }
-         // Note: Do not clear scheduledEventsRef if cancelEvents is false,
-         // as the events (like the final stop event) should complete naturally.
-         // However, we should clear it after the natural stop occurs.
-          if (!cancelEvents) {
-             // If stopping naturally, clear the ref after a short delay
-             setTimeout(() => { scheduledEventsRef.current = []; }, 10);
-          }
     };
 
     // --- Button Handler ---
     const handlePlayPauseOriginal = () => {
         if (isPlayingOriginal) {
-            stopOriginalPlayback(true); // Manually stop, cancel events
+            stopOriginalPlayback(true, false); // Manually stop, cancel events, don't reset position
         } else {
             playOriginalRecording();
         }
     };
 
-
     // --- Download Handlers ---
     const handleDownload = () => {
-        // ... (existing enhanced download logic) ...
-         if (enhancedAudioUrl) {
+        if (enhancedAudioUrl) {
             const link = document.createElement('a');
             link.href = enhancedAudioUrl;
             link.download = 'enhanced-audio.wav';
@@ -200,14 +203,11 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
         alert("Download Original MIDI/Audio - Functionality Placeholder");
     };
 
-
     // --- Calculate Progress ---
     const originalProgress = originalDuration > 0 ? (originalPlaybackTime / originalDuration) * 100 : 0;
 
     return (
         <div className="result-page-container">
-
-
             <div className="result-content-card">
                 <h2>Your Enhanced Audio</h2>
                 <div className="result-ai-assistant">
@@ -243,7 +243,7 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
                                     style={{ width: `${Math.min(100, originalProgress)}%` }} // Ensure width doesn't exceed 100%
                                 ></div>
                             </div>
-                             {/* Display formatted total duration */}
+                            {/* Display formatted total duration */}
                             <span className="time-total">{formatTime(originalDuration)}</span>
                             {/* Optional download button */}
                             {/* <button className="download-original-button" onClick={handleDownloadOriginal}>...</button> */}
@@ -252,10 +252,9 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
                 </div>
                 {/* --- End Original Input Section --- */}
 
-
                 {/* --- Enhanced Track Section (remains mostly unchanged) --- */}
-                 <h4 className="track-section-title">Enhanced Track</h4>
-                 <div className="audio-player-mock enhanced-track">
+                <h4 className="track-section-title">Enhanced Track</h4>
+                <div className="audio-player-mock enhanced-track">
                     <div className="audio-details">
                         <h3>Enhanced Track</h3>
                         <p>Generated on November 15, 2023</p>
@@ -274,9 +273,8 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [] }) => {
                             </button>
                         </div>
                     </div>
-                 </div>
-                 {/* --- End Enhanced Track Section --- */}
-
+                </div>
+                {/* --- End Enhanced Track Section --- */}
 
                 <div className="result-actions">
                     <button className="download-button" onClick={handleDownload}>

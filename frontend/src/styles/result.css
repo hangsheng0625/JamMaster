@@ -2,367 +2,370 @@
 
 /* ... (keep existing styles for .result-page-container, .result-content-card, .result-ai-assistant etc.) ... */
 .result-page-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh; /* Make it take full viewport height */
-    padding: 20px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    position: relative; /* Needed for absolute positioning of decorations */
-    overflow: hidden; /* Prevent decorations from overflowing */
-  }
-  
-  .result-content-card {
-    background-color: #ffffff;
-    padding: 30px 40px;
-    border-radius: 16px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-    text-align: center;
-    max-width: 650px;
-    width: 90%;
-    position: relative; /* Ensure content is above decorations */
-    z-index: 2;
-    border: 1px solid rgba(125, 21, 144, 0.1); /* Subtle border */
-  }
-  
-  .result-content-card h2 {
-    color: #6a1b9a; /* Dark purple */
-    font-size: 2.2rem;
-    margin-bottom: 25px;
-    font-weight: 600;
-  }
-  
-  .result-ai-assistant {
-    margin: 15px 0 25px 0;
-  }
-  
-  .result-ai-assistant img {
-    width: 100px; /* Smaller than piano page */
-    height: 100px;
-  }
-  
-  
-  /* --- Style for the section titles (Original Input / Enhanced Track) --- */
-  .track-section-title {
-      text-align: left;
-      color: #4a148c; /* Slightly darker purple */
-      font-size: 1rem;
-      font-weight: 600;
-      margin-top: 25px; /* Space above the title */
-      margin-bottom: 10px; /* Space below the title, before the player */
-      padding-left: 5px; /* Slight indent */
-      border-bottom: 1px solid #eee; /* Subtle separator */
-      padding-bottom: 5px;
-  }
-  
-  /* First title doesn't need top margin */
-  .track-section-title:first-of-type {
-      margin-top: 0;
-  }
-  
-  
-  /* --- Audio Player Mock Styles (Applied to both) --- */
-  .audio-player-mock {
-    display: flex;
-    align-items: center;
-    background-color: #f8f5fa; /* Very light purple background */
-    border-radius: 12px;
-    padding: 15px 20px; /* Slightly reduced padding */
-    /* Removed margin-bottom here, handled by titles now */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh; /* Make it take full viewport height */
+  padding: 20px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  position: relative; /* Needed for absolute positioning of decorations */
+  overflow: hidden; /* Prevent decorations from overflowing */
+}
+
+.result-content-card {
+  background-color: #ffffff;
+  padding: 30px 40px;
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  text-align: center;
+  max-width: 650px;
+  width: 90%;
+  position: relative; /* Ensure content is above decorations */
+  z-index: 2;
+  border: 1px solid rgba(125, 21, 144, 0.1); /* Subtle border */
+}
+
+.result-content-card h2 {
+  color: #6a1b9a; /* Dark purple */
+  font-size: 2.2rem;
+  margin-bottom: 25px;
+  font-weight: 600;
+}
+
+.result-ai-assistant {
+  margin: 15px 0 25px 0;
+}
+
+.result-ai-assistant img {
+  width: 100px; /* Smaller than piano page */
+  height: 100px;
+}
+
+
+/* --- Style for the section titles (Original Input / Enhanced Track) --- */
+.track-section-title {
     text-align: left;
-    border: 1px solid #efdffc; /* Very subtle border */
-  }
-  
-  .audio-thumbnail {
-    width: 60px; /* Slightly smaller thumbnail */
-    height: 60px;
-    background-color: #e8e0f1; /* Slightly purpler placeholder gray */
-    border-radius: 8px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 11px;
-    color: #757575;
-    margin-right: 15px; /* Reduced margin */
-    flex-shrink: 0;
-  }
-  
-  .audio-thumbnail svg {
-      width: 50%; /* Scale SVG inside */
-      height: 50%;
-  }
-  
-  
-  .audio-details {
-    flex-grow: 1;
-    min-width: 0; /* Allow details to shrink if needed */
-  }
-  
-  .audio-details h3 {
-    margin: 0 0 4px 0;
-    font-size: 1rem; /* Slightly smaller */
-    color: #333;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  .audio-details p {
-    margin: 0 0 12px 0; /* Reduced margin */
-    font-size: 0.85rem; /* Slightly smaller */
-    color: #666;
-  }
-  
-  .player-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px; /* Slightly smaller gap */
-  }
-  
-  .play-pause-button,
-  .volume-button,
-  .download-original-button /* Style for optional download button */
-  {
-    background-color: #7D1590;
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 32px; /* Smaller control buttons */
-    height: 32px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-    padding: 0;
-    flex-shrink: 0; /* Prevent buttons shrinking */
-  }
-  /* Specific style for optional download button */
-  .download-original-button {
-      background-color: #a46eb1; /* Lighter purple */
-  }
-  .download-original-button:hover {
-      background-color: #8e4d9b;
-  }
-  
-  
-  .play-pause-button:hover,
-  .volume-button:hover {
-    background-color: #6a1b9a;
-  }
-  
-  .play-pause-button svg,
-  .volume-button svg,
-  .download-original-button svg
-   {
-    display: block;
-    width: 18px; /* Smaller icons */
-    height: 18px;
-  }
-  
-  
-  .time-current,
-  .time-total {
-    font-size: 0.8rem; /* Smaller time text */
-    color: #555;
-    min-width: 30px;
-    text-align: center;
-    flex-shrink: 0;
-  }
-  
-  .progress-bar-container {
-    flex-grow: 1;
-    height: 5px; /* Thinner bar */
-    background-color: #e0c6ff;
-    border-radius: 3px;
-    cursor: pointer;
-    overflow: hidden;
-    margin: 0 5px;
-    min-width: 50px; /* Ensure it doesn't collapse too much */
-  }
-  
-  .progress-bar {
-    height: 100%;
-    background-color: #7D1590;
-    border-radius: 3px;
-  }
-  /* --- End Audio Player Mock Styles --- */
-  
-  
-  .result-actions {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    margin-top: 35px; /* Increased space above action buttons */
-  }
-  
-  /* ... (keep existing styles for .download-button, .start-new-button) ... */
-  .download-button,
-  .start-new-button {
-    padding: 12px 25px;
+    color: #4a148c; /* Slightly darker purple */
     font-size: 1rem;
     font-weight: 600;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: none;
+    margin-top: 25px; /* Space above the title */
+    margin-bottom: 10px; /* Space below the title, before the player */
+    padding-left: 5px; /* Slight indent */
+    border-bottom: 1px solid #eee; /* Subtle separator */
+    padding-bottom: 5px;
+}
+
+/* First title doesn't need top margin */
+.track-section-title:first-of-type {
+    margin-top: 0;
+}
+
+
+/* --- Audio Player Mock Styles (Applied to both) --- */
+.audio-player-mock {
+  display: flex;
+  align-items: center;
+  background-color: #f8f5fa; /* Very light purple background */
+  border-radius: 12px;
+  padding: 15px 20px; /* Slightly reduced padding */
+  /* Removed margin-bottom here, handled by titles now */
+  text-align: left;
+  border: 1px solid #efdffc; /* Very subtle border */
+}
+
+.audio-thumbnail {
+  width: 60px; /* Slightly smaller thumbnail */
+  height: 60px;
+  background-color: #e8e0f1; /* Slightly purpler placeholder gray */
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 11px;
+  color: #757575;
+  margin-right: 15px; /* Reduced margin */
+  flex-shrink: 0;
+}
+
+.audio-thumbnail svg {
+    width: 50%; /* Scale SVG inside */
+    height: 50%;
+}
+
+
+.audio-details {
+  flex-grow: 1;
+  min-width: 0; /* Allow details to shrink if needed */
+}
+
+.audio-details h3 {
+  margin: 0 0 4px 0;
+  font-size: 1rem; /* Slightly smaller */
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.audio-details p {
+  margin: 0 0 12px 0; /* Reduced margin */
+  font-size: 0.85rem; /* Slightly smaller */
+  color: #666;
+}
+
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* Slightly smaller gap */
+}
+
+.play-pause-button,
+.volume-button,
+.download-original-button /* Style for optional download button */
+{
+  background-color: #7D1590;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 32px; /* Smaller control buttons */
+  height: 32px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  padding: 0;
+  flex-shrink: 0; /* Prevent buttons shrinking */
+}
+/* Specific style for optional download button */
+.download-original-button {
+    background-color: #a46eb1; /* Lighter purple */
+}
+.download-original-button:hover {
+    background-color: #8e4d9b;
+}
+
+
+.play-pause-button:hover,
+.volume-button:hover {
+  background-color: #6a1b9a;
+}
+
+.play-pause-button svg,
+.volume-button svg,
+.download-original-button svg
+ {
+  display: block;
+  width: 18px; /* Smaller icons */
+  height: 18px;
+}
+
+
+.time-current,
+.time-total {
+  font-size: 0.8rem; /* Smaller time text */
+  color: #555;
+  min-width: 30px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* UPDATED PROGRESS BAR STYLES TO MATCH LOADING PAGE */
+.progress-bar-container {
+  flex-grow: 1;
+  height: 8px; /* Increased thickness to match loading page */
+  background-color: #e6e9ed; /* Updated to match loading page background */
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+  margin: 0 5px;
+  min-width: 50px; /* Ensure it doesn't collapse too much */
+}
+
+.progress-bar {
+  height: 100%;
+  /* Updated to match loading page with gradient */
+  background-color: #6a1b9a;
+  border-radius: 4px;
+  transition: width 0.3s ease-in-out;
+}
+/* --- End Audio Player Mock Styles --- */
+
+
+.result-actions {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 35px; /* Increased space above action buttons */
+}
+
+/* ... (keep existing styles for .download-button, .start-new-button) ... */
+.download-button,
+.start-new-button {
+  padding: 12px 25px;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+}
+
+.download-button {
+  background-color: #7D1590; /* Primary purple */
+  color: white;
+  box-shadow: 0 4px 10px rgba(125, 21, 144, 0.3);
+}
+
+.download-button:hover {
+  background-color: #6a1b9a;
+  box-shadow: 0 6px 15px rgba(125, 21, 144, 0.4);
+}
+
+.start-new-button {
+  background-color: white;
+  color: #7D1590;
+  border: 2px solid #7D1590;
+}
+
+.start-new-button:hover {
+  background-color: #f8f0ff; /* Very light purple on hover */
+  color: #6a1b9a;
+  border-color: #6a1b9a;
+}
+
+/* ... (keep existing styles for .decorative-clef, .decorative-note and media queries) ... */
+/* --- Decorative Elements --- */
+.decorative-clef,
+.decorative-note {
+    position: absolute;
+    z-index: 1;
+    opacity: 0.8;
+    filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+.decorative-clef {
+    width: 120px; /* Adjust size as needed */
+    height: auto;
+    bottom: 40px;
+    left: 40px;
+    transform: rotate(-15deg);
+}
+
+.decorative-note {
+    width: 100px; /* Adjust size as needed */
+    height: auto;
+    top: 60px;
+    right: 60px;
+    transform: rotate(10deg);
+}
+
+
+/* --- Responsive Adjustments --- */
+ @media (max-width: 768px) {
+     .result-content-card {
+         padding: 25px 20px; /* Adjusted padding */
+     }
+     .result-content-card h2 {
+         font-size: 1.8rem;
+     }
+     .track-section-title {
+         font-size: 0.9rem;
+         margin-top: 20px;
+     }
+     .audio-player-mock {
+         /* Keep flex-direction row for players unless screen is very small */
+         padding: 10px 15px;
+     }
+     .audio-thumbnail {
+         width: 50px;
+         height: 50px;
+         margin-right: 10px;
+     }
+     .audio-details h3 {
+         font-size: 0.9rem;
+     }
+     .player-controls {
+         /* Allow wrapping if needed on smaller tablets */
+         flex-wrap: wrap;
+         gap: 6px;
+     }
+      .progress-bar-container {
+         /* Let it wrap if space is tight */
+         min-width: 100px;
+         order: 1; /* May push to next line if wrapping */
+         width: 100%; /* Take full width if wrapped */
+         margin: 5px 0;
+     }
+
+
+     .result-actions {
+         flex-direction: column;
+         gap: 15px;
+         margin-top: 25px;
+     }
+     .decorative-clef {
+         width: 80px;
+         left: 15px;
+         bottom: 15px;
+     }
+     .decorative-note {
+         width: 70px;
+         top: 20px;
+         right: 15px;
+     }
+ }
+
+  @media (max-width: 480px) {
+     .result-page-container {
+         padding: 10px;
+     }
+     .result-content-card {
+         padding: 20px 10px; /* Reduced padding */
+     }
+     .result-content-card h2 {
+         font-size: 1.6rem;
+         margin-bottom: 20px;
+     }
+      .result-ai-assistant img {
+         width: 70px; /* Smaller robot */
+         height: 70px;
+     }
+     .track-section-title {
+        font-size: 0.85rem;
+        margin-top: 15px;
+        margin-bottom: 8px;
+     }
+      .audio-player-mock {
+        /* Stack player elements on very small screens */
+        flex-direction: column;
+        align-items: stretch;
+        padding: 10px;
+     }
+     .audio-thumbnail {
+        margin-right: 0;
+        margin-bottom: 10px;
+        align-self: center; /* Center thumbnail */
+        width: 55px;
+        height: 55px;
+     }
+     .player-controls {
+         justify-content: center; /* Center controls when wrapped */
+         gap: 8px;
+     }
+     .play-pause-button, .volume-button, .download-original-button {
+         width: 30px; /* Even smaller buttons */
+         height: 30px;
+     }
+      .play-pause-button svg, .volume-button svg, .download-original-button svg {
+          width: 16px; /* Smaller icons */
+          height: 16px;
+      }
+     .download-button, .start-new-button {
+         padding: 10px 15px;
+         font-size: 0.9rem;
+     }
+     .decorative-clef, .decorative-note {
+        display: none; /* Hide decorations on very small screens */
+     }
   }
-  
-  .download-button {
-    background-color: #7D1590; /* Primary purple */
-    color: white;
-    box-shadow: 0 4px 10px rgba(125, 21, 144, 0.3);
-  }
-  
-  .download-button:hover {
-    background-color: #6a1b9a;
-    box-shadow: 0 6px 15px rgba(125, 21, 144, 0.4);
-  }
-  
-  .start-new-button {
-    background-color: white;
-    color: #7D1590;
-    border: 2px solid #7D1590;
-  }
-  
-  .start-new-button:hover {
-    background-color: #f8f0ff; /* Very light purple on hover */
-    color: #6a1b9a;
-    border-color: #6a1b9a;
-  }
-  
-  /* ... (keep existing styles for .decorative-clef, .decorative-note and media queries) ... */
-  /* --- Decorative Elements --- */
-  .decorative-clef,
-  .decorative-note {
-      position: absolute;
-      z-index: 1;
-      opacity: 0.8;
-      filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.2));
-  }
-  
-  .decorative-clef {
-      width: 120px; /* Adjust size as needed */
-      height: auto;
-      bottom: 40px;
-      left: 40px;
-      transform: rotate(-15deg);
-  }
-  
-  .decorative-note {
-      width: 100px; /* Adjust size as needed */
-      height: auto;
-      top: 60px;
-      right: 60px;
-      transform: rotate(10deg);
-  }
-  
-  
-  /* --- Responsive Adjustments --- */
-   @media (max-width: 768px) {
-       .result-content-card {
-           padding: 25px 20px; /* Adjusted padding */
-       }
-       .result-content-card h2 {
-           font-size: 1.8rem;
-       }
-       .track-section-title {
-           font-size: 0.9rem;
-           margin-top: 20px;
-       }
-       .audio-player-mock {
-           /* Keep flex-direction row for players unless screen is very small */
-           padding: 10px 15px;
-       }
-       .audio-thumbnail {
-           width: 50px;
-           height: 50px;
-           margin-right: 10px;
-       }
-       .audio-details h3 {
-           font-size: 0.9rem;
-       }
-       .player-controls {
-           /* Allow wrapping if needed on smaller tablets */
-           flex-wrap: wrap;
-           gap: 6px;
-       }
-        .progress-bar-container {
-           /* Let it wrap if space is tight */
-           min-width: 100px;
-           order: 1; /* May push to next line if wrapping */
-           width: 100%; /* Take full width if wrapped */
-           margin: 5px 0;
-       }
-  
-  
-       .result-actions {
-           flex-direction: column;
-           gap: 15px;
-           margin-top: 25px;
-       }
-       .decorative-clef {
-           width: 80px;
-           left: 15px;
-           bottom: 15px;
-       }
-       .decorative-note {
-           width: 70px;
-           top: 20px;
-           right: 15px;
-       }
-   }
-  
-    @media (max-width: 480px) {
-       .result-page-container {
-           padding: 10px;
-       }
-       .result-content-card {
-           padding: 20px 10px; /* Reduced padding */
-       }
-       .result-content-card h2 {
-           font-size: 1.6rem;
-           margin-bottom: 20px;
-       }
-        .result-ai-assistant img {
-           width: 70px; /* Smaller robot */
-           height: 70px;
-       }
-       .track-section-title {
-          font-size: 0.85rem;
-          margin-top: 15px;
-          margin-bottom: 8px;
-       }
-        .audio-player-mock {
-          /* Stack player elements on very small screens */
-          flex-direction: column;
-          align-items: stretch;
-          padding: 10px;
-       }
-       .audio-thumbnail {
-          margin-right: 0;
-          margin-bottom: 10px;
-          align-self: center; /* Center thumbnail */
-          width: 55px;
-          height: 55px;
-       }
-       .player-controls {
-           justify-content: center; /* Center controls when wrapped */
-           gap: 8px;
-       }
-       .play-pause-button, .volume-button, .download-original-button {
-           width: 30px; /* Even smaller buttons */
-           height: 30px;
-       }
-        .play-pause-button svg, .volume-button svg, .download-original-button svg {
-            width: 16px; /* Smaller icons */
-            height: 16px;
-        }
-       .download-button, .start-new-button {
-           padding: 10px 15px;
-           font-size: 0.9rem;
-       }
-       .decorative-clef, .decorative-note {
-          display: none; /* Hide decorations on very small screens */
-       }
-    }
