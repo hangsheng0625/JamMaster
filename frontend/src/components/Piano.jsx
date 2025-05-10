@@ -438,7 +438,7 @@
                {isPlaying ? 'Playing...' : 'Play Recording'}
              </button>
              <button className="save-button" onClick={saveMidiRecording}>
-               Save as MIDI
+               Generate
              </button>
            </div>
          </div>

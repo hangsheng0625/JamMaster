@@ -21,8 +21,8 @@ def main():
         n_target_bar=16,
         temperature=1.2,
         topk=5,
-        output_path='./result/000-output.midi',
-        prompt='./data/evaluation/000.midi')    
+        output_path='./result/random-output-2.midi',
+        prompt='./data/evaluation/random-input-2.mid')    
     # close model
     model.close()
 
