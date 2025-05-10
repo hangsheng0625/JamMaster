@@ -5,6 +5,7 @@
  import recording from "../assets/recording_icon.png"
  import stopRecording from "../assets/stop-recording.png"
  import "../styles/piano.css"
+ import { fetchSanitizeAudio, fetchGenerate } from './api';
 
  // ... (keep noteToMidiNumber and createSimpleMidiFile functions as they are) ...
  const noteToMidiNumber = (noteName) => {
@@ -260,6 +261,31 @@
      }, maxEndTime + 200); // Add a small buffer
    };
 
+
+  const sendMidiToBackend = async (blob, filename = "recording.mid") => {
+    const formData = new FormData();
+    formData.append('file', blob, filename);
+
+    try {
+      const response = await fetch('http://localhost:5000/upload_midi', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error("MIDI upload failed");
+      }
+
+      console.log("MIDI uploaded and saved on backend");
+
+      // Trigger other API calls after successful save
+    } catch (err) {
+      console.error(err);
+    }
+    // const sanData = await fetchSanitizeAudio(formData.path);
+    await fetchGenerate(formData.path);
+  };
+
   const saveMidiRecording = () => {
     // Filter out notes with zero or negative duration before saving
     const validNotes = recordedNotes.filter(note => note.duration > 0 && note.timestamp >= 0);
@@ -297,6 +323,9 @@
     setTimeout(() => URL.revokeObjectURL(url), 100);
     
     console.log(`MIDI file saved with ${recordedNotes.length} notes`);
+    // HERE NEED TO SAVE FILE LOCALLY
+    sendMidiToBackend(blob, `recording-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.mid`)
+
   };
 
    // --- Render Piano Key Function ---

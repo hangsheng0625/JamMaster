@@ -1,3 +1,4 @@
-remi/REMI-tempo-checkpoint/model.data-00000-of-00001
-remi/REMI-tempo-chord-checkpoint/model.data-00000-of-00001
+backend/remi/REMI-tempo-checkpoint/model.data-00000-of-00001
+backend/remi/REMI-tempo-chord-checkpoint/model.data-00000-of-00001
+backend/recordings/
 **/*.data-00000-of-00001
