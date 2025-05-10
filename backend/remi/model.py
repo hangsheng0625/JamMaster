@@ -1,3 +1,9 @@
+import sys
+import os
+
+# Add the remi directory explicitly to the path
+sys.path.append(os.path.dirname(__file__))
+
 import tensorflow as tf
 import numpy as np
 import miditoolkit

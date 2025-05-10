@@ -1,4 +1,6 @@
 from flask import Flask, request, jsonify
+from remi.model import PopMusicTransformer
+from converter.converter import process_midi_file
 
 app = Flask(__name__)
 
@@ -7,19 +9,35 @@ app = Flask(__name__)
 def hello():
     return jsonify({'message': 'Hello, world!'})
 
-# Route 2: POST with JSON input
-@app.route('/add', methods=['POST'])
-def add_numbers():
-    data = request.get_json()
-    if not data or 'a' not in data or 'b' not in data:
-        return jsonify({'error': 'Missing "a" or "b" in request'}), 400
+@app.route('/sanitize_audio', methods=["POST"])
+def sanitize():
+    inpath = "" # Change later for wherever recording is stored
+    outpath = "" # same as above
+    process_midi_file(inpath, outpath)
 
-    try:
-        a = int(data['a'])
-        b = int(data['b'])
-        return jsonify({'result': a + b})
-    except (TypeError, ValueError):
-        return jsonify({'error': 'Invalid input. "a" and "b" must be integers'}), 400
+# Route 2: Generate 
+@app.route('/generate', methods=['POST'])
+def generate():
+    inpath = "" # Change later for wherever recording is stored
+    outpath = "" # same as above
+
+    model = PopMusicTransformer(
+        checkpoint='REMI-tempo-checkpoint',
+        is_training=False)
+    
+    # generate continuation
+    model.generate(
+        n_target_bar=16,
+        temperature=1.2,
+        topk=5,
+        output_path=outpath,
+        prompt=inpath)    
+    # close model
+    model.close()
+    
+@app.route('/test', methods=['GET'])
+def test():
+    return jsonify({'message': "".join(["hello " for i in range(20)])})
 
 if __name__ == '__main__':
     app.run(debug=True)
