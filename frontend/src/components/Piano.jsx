@@ -254,6 +254,10 @@ const createSimpleMidiFile = (recordedNotes) => {
       // Around line 317-326 in the original code
 
       // Create note-on event
+// Find the section in createSimpleMidiFile where note-on events are created
+// Around line 317-326 in the original code
+
+      // Create note-on event
       events.push({
         time: onTimeTicks,
         type: 'note-on',
