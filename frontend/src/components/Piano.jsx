@@ -250,14 +250,17 @@ const createSimpleMidiFile = (recordedNotes) => {
       // Apply scaling for the duration to prevent extremely long notes
       const offTimeTicks = onTimeTicks + msToTicks(note.duration, PPQ, TIME_FACTOR, true);
       
+      // Find the section in createSimpleMidiFile where note-on events are created
+      // Around line 317-326 in the original code
+
       // Create note-on event
       events.push({
         time: onTimeTicks,
         type: 'note-on',
         noteNum,
-        velocity: 0x64  // 100 (medium-loud)
+        velocity: 0x15  // Changed from 0x64 (100) to 0x15 (21)
       });
-      
+
       // Create note-off event
       events.push({
         time: offTimeTicks,
@@ -583,18 +586,18 @@ const Piano = ({ onMidiSaved }) => {
         throw new Error("MIDI upload failed");
       }
 
-      console.log("MIDI uploaded and saved on backend");
-      
-      // Trigger other API calls after successful save
-      await fetchGenerate(formData.path);
+    const data = await response.json();
+    console.log("MIDI uploaded and saved on backend at:", data.path);
+
+    // Use the path returned from the server
+    if (data.path) {
+      await fetchGenerate(data.path);
+      } else {
+        console.error("No path received from server");
+      }
     } catch (err) {
-      console.error("Error uploading MIDI:", err);
+      console.error("Error in MIDI upload:", err);
     }
-<<<<<<< HEAD
-    // const sanData = await fetchSanitizeAudio(formData.path);
-    await fetchGenerate(data.path);
-=======
->>>>>>> df5d7863149fb7bde3414b89ccfefdf502cab9a5
   };
 
   // Save the MIDI recording
