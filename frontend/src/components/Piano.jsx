@@ -251,13 +251,17 @@ const createSimpleMidiFile = (recordedNotes) => {
       const offTimeTicks = onTimeTicks + msToTicks(note.duration, PPQ, TIME_FACTOR, true);
       
       // Create note-on event
+// Find the section in createSimpleMidiFile where note-on events are created
+// Around line 317-326 in the original code
+
+      // Create note-on event
       events.push({
         time: onTimeTicks,
         type: 'note-on',
         noteNum,
-        velocity: 0x64  // 100 (medium-loud)
+        velocity: 0x15  // Changed from 0x64 (100) to 0x15 (21)
       });
-      
+
       // Create note-off event
       events.push({
         time: offTimeTicks,
