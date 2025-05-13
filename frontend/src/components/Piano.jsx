@@ -283,7 +283,7 @@
       console.error(err);
     }
     // const sanData = await fetchSanitizeAudio(formData.path);
-    await fetchGenerate(formData.path);
+    await fetchGenerate(data.path);
   };
 
   const saveMidiRecording = () => {

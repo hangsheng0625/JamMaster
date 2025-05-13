@@ -170,6 +170,7 @@ def create_corrected_midi(original_midi_path, corrected_pitches, output_path):
 
 def process_midi_file(input_path, output_path):
     """Full processing pipeline that preserves original timing"""
+    print("processing midi file")
     # 1. Load original MIDI file
     mid = MidiFile(input_path)
     
