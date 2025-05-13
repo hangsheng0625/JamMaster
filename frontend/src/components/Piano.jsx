@@ -7,44 +7,113 @@ import stopRecording from "../assets/stop-recording.png"
 import "../styles/piano.css"
 import { fetchSanitizeAudio, fetchGenerate } from './api';
 
-// Convert a note name (e.g., "C4") to MIDI note number
+// Complete MIDI file generation with all necessary helper functions
+/**
+ * Convert a note name (e.g., "C4") to its MIDI note number
+ * @param {string} noteName - The name of the note (e.g., "C4", "F#5")
+ * @return {number} The MIDI note number
+ */
 const noteToMidiNumber = (noteName) => {
-  const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  const matches = noteName.match(/^([A-G]#?)(\d+)$/);
-  if (!matches) return 60; // Default to middle C if no match
-  const [, note, octave] = matches;
-  const noteIndex = notes.indexOf(note);
-  return noteIndex + 12 * (parseInt(octave) + 1);
-};
-
-// Improved VLQ encoding function
-const numberToVLQ = (number) => {
-  // Ensure number is positive
-  if (number < 0) number = 0;
-  
-  // For zero, return a single byte
-  if (number === 0) return [0];
-  
-  const vlq = [];
-  let value = number;
-  
-  // Process 7 bits at a time, with continuation bit set for all except the last byte
-  while (value > 0) {
-    let byte = value & 0x7F; // Take the 7 least significant bits
-    value = value >> 7;      // Shift right by 7 bits
-    
-    // If there are more bytes to come, set the high bit
-    if (value > 0) {
-      byte |= 0x80;
-    }
-    
-    vlq.push(byte);
+  if (!noteName || typeof noteName !== 'string') {
+    throw new Error(`Invalid note name: ${noteName}`);
   }
   
-  return vlq;
+  // Split the note into the note name and octave
+  // Handle both "C4" format and "C-4" format
+  const match = noteName.match(/^([A-G][#b]?)(-?\d+)$/i);
+  if (!match) {
+    throw new Error(`Invalid note format: ${noteName}`);
+  }
+  
+  const note = match[1].toUpperCase();
+  const octave = parseInt(match[2], 10);
+  
+  // Base values for MIDI notes
+  const noteValues = {
+    'C': 0, 'C#': 1, 'DB': 1, 'Db': 1,
+    'D': 2, 'D#': 3, 'EB': 3, 'Eb': 3,
+    'E': 4, 
+    'F': 5, 'F#': 6, 'GB': 6, 'Gb': 6,
+    'G': 7, 'G#': 8, 'AB': 8, 'Ab': 8,
+    'A': 9, 'A#': 10, 'BB': 10, 'Bb': 10,
+    'B': 11
+  };
+  
+  if (!(note in noteValues)) {
+    throw new Error(`Unknown note: ${note}`);
+  }
+  
+  // MIDI note number calculation: (octave + 1) * 12 + noteValue
+  // Middle C (C4) is MIDI note 60
+  const midiNoteNumber = (octave + 1) * 12 + noteValues[note];
+  
+  // Validate the note is within MIDI range (0-127)
+  if (midiNoteNumber < 0 || midiNoteNumber > 127) {
+    throw new Error(`Note ${noteName} (${midiNoteNumber}) out of MIDI range (0-127)`);
+  }
+  
+  return midiNoteNumber;
 };
 
-// Corrected MIDI file generation function
+/**
+ * Convert a number to a Variable Length Quantity (VLQ) for MIDI encoding
+ * @param {number} num - The number to convert
+ * @return {Array<number>} The VLQ as an array of bytes
+ */
+const numberToVLQ = (num) => {
+  if (num < 0) {
+    throw new Error(`Cannot convert negative number ${num} to VLQ`);
+  }
+  
+  if (num === 0) {
+    return [0];
+  }
+  
+  const bytes = [];
+  let value = num;
+  
+  // Extract 7 bits at a time, starting from the lowest bits
+  while (value > 0) {
+    // Take the lowest 7 bits and add them to our bytes
+    bytes.unshift(value & 0x7F);
+    // Shift right by 7 bits to process the next 7 bits
+    value = value >> 7;
+  }
+  
+  // All bytes except the last one need to have the high bit set
+  for (let i = 0; i < bytes.length - 1; i++) {
+    bytes[i] |= 0x80;
+  }
+  
+  return bytes;
+};
+
+/**
+ * Convert milliseconds to MIDI ticks with scaling for natural note durations
+ * @param {number} ms - The time in milliseconds
+ * @param {number} ppq - Pulses per quarter note
+ * @param {number} timeFactor - Time factor for conversion (ms per beat)
+ * @param {boolean} applyScaling - Whether to apply scaling to long durations
+ * @return {number} MIDI ticks
+ */
+const msToTicks = (ms, ppq, timeFactor, applyScaling = false) => {
+  // Apply scaling for note durations to make them more natural
+  let scaledMs = ms;
+  
+  if (applyScaling && ms >= 1000) {
+    // Logarithmic scaling for durations > 1 second
+    // This creates a more natural feel for held notes
+    scaledMs = 1000 + Math.log(ms - 999) * 300;
+  }
+  
+  return Math.round(scaledMs / timeFactor * ppq);
+};
+
+/**
+ * Create a MIDI file from recorded notes
+ * @param {Array<Object>} recordedNotes - Array of note objects with note, timestamp, and duration
+ * @return {Uint8Array} MIDI file data as a byte array
+ */
 const createSimpleMidiFile = (recordedNotes) => {
   console.log(`Creating MIDI file from ${recordedNotes.length} notes`);
   
@@ -65,37 +134,86 @@ const createSimpleMidiFile = (recordedNotes) => {
     return new Uint8Array([
       0x4D, 0x54, 0x68, 0x64, // MThd header
       0x00, 0x00, 0x00, 0x06, // Header length (6 bytes)
-      0x00, 0x00,             // Format 0 (single track)
-      0x00, 0x01,             // Number of tracks (1)
-      0x00, 0x60,             // Division (96 ticks per quarter note)
+      0x00, 0x01,             // Format 1 (multi-track, more compatible than format 0)
+      0x00, 0x02,             // Number of tracks (2 - one for tempo, one for notes)
+      0x01, 0xE0,             // Division (480 ticks per quarter note - more standard)
+      
+      // Track 1 - Tempo track
+      0x4D, 0x54, 0x72, 0x6B, // MTrk header
+      0x00, 0x00, 0x00, 0x14, // Track length (20 bytes)
+      
+      // Tempo event (120 BPM)
+      0x00,                   // Delta time (0)
+      0xFF, 0x51, 0x03,       // Meta event: Set Tempo (3 bytes)
+      0x07, 0xA1, 0x20,       // Tempo value: 500,000 microseconds/quarter
+      
+      // Track name
+      0x00,                   // Delta time (0)
+      0xFF, 0x03, 0x05,       // Meta event: Track Name (5 bytes)
+      0x54, 0x65, 0x6D, 0x70, 0x6F, // "Tempo"
+      
+      // End of track
+      0x00,                   // Delta time (0)
+      0xFF, 0x2F, 0x00,       // Meta event: End of Track
+      
+      // Track 2 - Empty note track
       0x4D, 0x54, 0x72, 0x6B, // MTrk header
       0x00, 0x00, 0x00, 0x04, // Track length (4 bytes)
       0x00, 0xFF, 0x2F, 0x00  // End of track event
     ]);
   }
   
-  // Set up MIDI header
+  // Set up MIDI header - use format 1 which is more compatible
   const midiData = [
     // MIDI file header (MThd chunk)
     0x4D, 0x54, 0x68, 0x64,   // MThd
     0x00, 0x00, 0x00, 0x06,   // Header length (always 6)
-    0x00, 0x00,               // Format 0 (single track)
-    0x00, 0x01,               // Number of tracks (1)
-    0x00, 0x60,               // Division (96 ticks per quarter note = 96 PPQ)
+    0x00, 0x01,               // Format 1 (multiple tracks, more standard)
+    0x00, 0x02,               // Number of tracks (2 - one for tempo, one for notes)
+    0x01, 0xE0,               // Division (480 ticks per quarter note - more standard)
     
-    // Track chunk header
+    // Track 1 - Tempo and metadata track
     0x4D, 0x54, 0x72, 0x6B,   // MTrk
     0x00, 0x00, 0x00, 0x00    // Track length (placeholder to be filled later)
   ];
   
-  // Store position of the track length bytes for later update
-  const trackLengthPos = midiData.length - 4;
-  const trackStartPos = midiData.length;
+  // Store position of the first track length bytes for later update
+  const track1LengthPos = midiData.length - 4;
+  const track1StartPos = midiData.length;
+  
+  // Add track name
+  midiData.push(0x00);                  // Delta time (0)
+  midiData.push(0xFF, 0x03, 0x05);      // Meta event: Track Name (5 bytes)
+  midiData.push(0x54, 0x65, 0x6D, 0x70, 0x6F); // "Tempo"
   
   // Add initial tempo metadata (120 BPM = 500,000 microseconds per quarter note)
   midiData.push(0x00);                  // Delta time (0)
   midiData.push(0xFF, 0x51, 0x03);      // Meta event: Tempo
   midiData.push(0x07, 0xA1, 0x20);      // Tempo value: 500,000 (0x07A120)
+  
+  // End of track 1
+  midiData.push(0x00);                  // Delta time (0)
+  midiData.push(0xFF, 0x2F, 0x00);      // Meta event: End of Track
+  
+  // Calculate and update track 1 length
+  const track1Length = midiData.length - track1StartPos;
+  midiData[track1LengthPos] = (track1Length >> 24) & 0xFF;
+  midiData[track1LengthPos + 1] = (track1Length >> 16) & 0xFF;
+  midiData[track1LengthPos + 2] = (track1Length >> 8) & 0xFF;
+  midiData[track1LengthPos + 3] = track1Length & 0xFF;
+  
+  // Track 2 - Note data
+  midiData.push(0x4D, 0x54, 0x72, 0x6B);  // MTrk
+  midiData.push(0x00, 0x00, 0x00, 0x00);  // Track length (placeholder to be filled later)
+  
+  // Store position of the second track length bytes for later update
+  const track2LengthPos = midiData.length - 4;
+  const track2StartPos = midiData.length;
+  
+  // Add track name
+  midiData.push(0x00);                  // Delta time (0)
+  midiData.push(0xFF, 0x03, 0x05);      // Meta event: Track Name (5 bytes)
+  midiData.push(0x50, 0x69, 0x61, 0x6E, 0x6F); // "Piano"
   
   // Add program change (instrument = piano)
   midiData.push(0x00);                  // Delta time (0)
@@ -104,9 +222,18 @@ const createSimpleMidiFile = (recordedNotes) => {
   // Prepare note events (both note-on and note-off)
   const events = [];
   
-  // MIDI time factor - convert from ms to MIDI ticks (96 PPQ at 120 BPM)
-  // 60000 ms/minute ÷ 120 beats/minute = 500 ms/beat
-  const TIME_FACTOR = 500; // Corrected from 48000
+  // MIDI time factor - convert from ms to MIDI ticks
+  // We're using 480 PPQ (ticks per quarter) at 120 BPM
+  const PPQ = 480; // Pulses per quarter note
+  const TIME_FACTOR = 500; // 500ms per beat at 120 BPM
+  
+  // Normalize timestamps - find the first timestamp to use as the origin
+  let firstTimestamp = Number.MAX_SAFE_INTEGER;
+  validNotes.forEach(note => {
+    if (note.timestamp < firstTimestamp) {
+      firstTimestamp = note.timestamp;
+    }
+  });
   
   // Process each note into note-on and note-off events
   validNotes.forEach(note => {
@@ -114,9 +241,14 @@ const createSimpleMidiFile = (recordedNotes) => {
       // Convert note name to MIDI note number
       const noteNum = noteToMidiNumber(note.note);
       
+      // Normalize the timestamp (subtract the first timestamp)
+      const normalizedTimestamp = note.timestamp - firstTimestamp;
+      
       // Convert timestamps to MIDI ticks
-      const onTimeTicks = Math.round(note.timestamp / TIME_FACTOR * 96);
-      const offTimeTicks = Math.round((note.timestamp + note.duration) / TIME_FACTOR * 96);
+      const onTimeTicks = msToTicks(normalizedTimestamp, PPQ, TIME_FACTOR);
+      
+      // Apply scaling for the duration to prevent extremely long notes
+      const offTimeTicks = onTimeTicks + msToTicks(note.duration, PPQ, TIME_FACTOR, true);
       
       // Create note-on event
       events.push({
@@ -178,17 +310,18 @@ const createSimpleMidiFile = (recordedNotes) => {
   midiData.push(0x00);                 // Delta time (0)
   midiData.push(0xFF, 0x2F, 0x00);     // Meta event: End of Track
   
-  // Calculate and update track length
-  const trackLength = midiData.length - trackStartPos;
-  midiData[trackLengthPos] = (trackLength >> 24) & 0xFF;
-  midiData[trackLengthPos + 1] = (trackLength >> 16) & 0xFF;
-  midiData[trackLengthPos + 2] = (trackLength >> 8) & 0xFF;
-  midiData[trackLengthPos + 3] = trackLength & 0xFF;
+  // Calculate and update track 2 length
+  const track2Length = midiData.length - track2StartPos;
+  midiData[track2LengthPos] = (track2Length >> 24) & 0xFF;
+  midiData[track2LengthPos + 1] = (track2Length >> 16) & 0xFF;
+  midiData[track2LengthPos + 2] = (track2Length >> 8) & 0xFF;
+  midiData[track2LengthPos + 3] = track2Length & 0xFF;
   
-  console.log(`MIDI file created with ${trackLength} bytes of track data`);
+  console.log(`MIDI file created with ${track1Length + track2Length} bytes of track data`);
   
   return new Uint8Array(midiData);
 };
+
 // Piano component
 const Piano = ({ onMidiSaved }) => {
   const [isRecording, setIsRecording] = useState(false);
