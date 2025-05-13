@@ -29,8 +29,11 @@ def generate():
     data = request.get_json()
 
     inpath = data.get("inpath")
+    if inpath:
+        inpath = inpath.replace('\\', '/')
     outpath = os.path.join(UPLOAD_FOLDER, "generated.mid")
     try:
+        print("inpath", inpath)
         print("we are in try")
         model = PopMusicTransformer(
             checkpoint='./remi/REMI-tempo-checkpoint',
@@ -42,12 +45,15 @@ def generate():
             temperature=1.2,
             topk=5,
             output_path=outpath,
-            prompt=inpath)    
+            prompt=inpath)
+            
         # close model
         model.close()
         return {'message': '', 'path': outpath}, 200
     except Exception as e:
-        print("except happened")
+        print("Exception occurred:", str(e))
+        import traceback
+        traceback.print_exc()  # This prints the full stack trace
         return {'error': str(e)}, 500
     
     
@@ -66,8 +72,13 @@ def upload_midi():
 
     filepath = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(filepath)
-    print(f"Saved MIDI to {filepath}")
-    return {'message': 'MIDI uploaded and saved', 'path': filepath}, 200
+
+    # Convert to forward slashes for consistent cross-platform behavior
+    normalized_path = filepath.replace('\\', '/')
+    print(f"Saved MIDI to {filepath}, normalized as {normalized_path}")
+    
+    # Return the normalized path with forward slashes
+    return {'message': 'MIDI uploaded and saved', 'path': normalized_path}, 200
 
 if __name__ == '__main__':
     app.run(debug=True)
