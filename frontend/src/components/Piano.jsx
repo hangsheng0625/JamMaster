@@ -594,6 +594,11 @@ const Piano = ({ onMidiSaved }) => {
     } catch (err) {
       console.error("Error uploading MIDI:", err);
     }
+<<<<<<< HEAD
+    // const sanData = await fetchSanitizeAudio(formData.path);
+    await fetchGenerate(data.path);
+=======
+>>>>>>> df5d7863149fb7bde3414b89ccfefdf502cab9a5
   };
 
   // Save the MIDI recording

@@ -22,7 +22,7 @@ const LoadingPage = ({ onLoadingComplete, originalNotes }) => {
     const progressInterval = setInterval(() => {
       setProgress(prevProgress => {
         // Calculate new progress
-        const newProgress = prevProgress + (100 / 15); // 15 seconds total
+        const newProgress = prevProgress + (100 / 3); // 15 seconds total
         
         // Update status message at certain progress points
         const messageIndex = Math.floor((newProgress / 100) * (statusMessages.length - 1));
