@@ -336,7 +336,14 @@ const Piano = ({ onMidiSaved }) => {
   const [recordedNotes, setRecordedNotes] = useState([]);
   const [startTime, setStartTime] = useState(null);
   const [activeKeys, setActiveKeys] = useState({});
+  const [showInfo, setShowInfo] = useState(false);
 
+
+  const [modelParams, setModelParams] = useState({
+    nTargetBar: 8,
+    temperature: 0.9,
+    topk: 5,
+  });
   // Improved note tracking reference
   const activeNotesRef = useRef({
     // Structure: { keyName: { id: "noteId", startTime: timestamp } }
@@ -364,6 +371,14 @@ const Piano = ({ onMidiSaved }) => {
       }
     };
   }, []);
+
+  const handleParameterChange = (param, value) => {
+    setModelParams(prev => ({
+      ...prev,
+      [param]: value
+    }));
+    console.log(`Parameter ${param} changed to ${value}`);
+  };
 
   // Start the audio context (needed for browser autoplay policies)
   const startAudio = () => {
@@ -575,6 +590,25 @@ const Piano = ({ onMidiSaved }) => {
     }, maxEndTime + 200); // Add a small buffer
   };
 
+  // Format and render parameter controls with descriptions
+  const renderParameterSlider = (param, label, min, max, step, description) => {
+    const value = modelParams[param];
+    return (
+      <div className="parameter-control" data-description={description}>
+        <label htmlFor={param}>{label}: {value}</label>
+        <input
+          type="range"
+          id={param}
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => handleParameterChange(param, parseFloat(e.target.value))}
+        />
+      </div>
+    );
+  };
+
   // Upload MIDI to the backend
   const sendMidiToBackend = async (blob, filename = "recording.mid") => {
   const formData = new FormData();
@@ -726,86 +760,148 @@ const Piano = ({ onMidiSaved }) => {
     );
   };
 
-  return (
-    <div className="virtual-piano-container">
-      <div className="header">
-        <h1>Virtual Piano Studio</h1>
-        <p>Play, record, and let AI enhance your music</p>
-      </div>
+return (
+  <div className="virtual-piano-container">
+    <div className="header">
+      <h1>Virtual Piano Studio</h1>
+      <p>Play, record, and let AI enhance your music</p>
+    </div>
 
-      <div className="ai-assistant">
-        <img src={robot} alt="AI Assistant" />
-      </div>
+    <div className="ai-assistant">
+      <img src={robot} alt="AI Assistant" />
+    </div>
 
-      <button
-        className={`recording-button ${isRecording ? 'recording' : ''}`}
-        onClick={toggleRecording}
-      >
-        <img src={isRecording ? stopRecording : recording} alt={isRecording ? "Stop icon" : "Record icon"} />
-        {isRecording ? 'Stop Recording' : 'Start Recording'}
-      </button>
+    <button
+      className={`recording-button ${isRecording ? 'recording' : ''}`}
+      onClick={toggleRecording}
+    >
+      <img src={isRecording ? stopRecording : recording} alt={isRecording ? "Stop icon" : "Record icon"} />
+      {isRecording ? 'Stop Recording' : 'Start Recording'}
+    </button>
 
-      <div className="piano-container">
-        {/* White keys */}
-        <div className="white-keys">
-          {renderPianoKey('Q', 'C4')}
-          {renderPianoKey('W', 'D4')}
-          {renderPianoKey('E', 'E4')}
-          {renderPianoKey('R', 'F4')}
-          {renderPianoKey('T', 'G4')}
-          {renderPianoKey('Y', 'A4')}
-          {renderPianoKey('U', 'B4')}
-          {renderPianoKey('I', 'C5')}
-          {renderPianoKey('O', 'D5')}
-          {renderPianoKey('P', 'E5')}
-          {renderPianoKey('Z', 'F5')}
-          {renderPianoKey('X', 'G5')}
-          {renderPianoKey('C', 'A5')}
-          {renderPianoKey('V', 'B5')}
-        </div>
-
-        {/* Black keys */}
-        <div className="black-keys">
-          {renderPianoKey('2', 'C#4', true)}
-          {renderPianoKey('3', 'D#4', true)}
-          {renderPianoKey('5', 'F#4', true)}
-          {renderPianoKey('6', 'G#4', true)}
-          {renderPianoKey('7', 'A#4', true)}
-          {renderPianoKey('9', 'C#5', true)}
-          {renderPianoKey('0', 'D#5', true)}
-          {renderPianoKey('S', 'F#5', true)}
-          {renderPianoKey('D', 'G#5', true)}
-          {renderPianoKey('F', 'A#5', true)}
-        </div>
-      </div>
-
-      {isRecording && startTime && (
-        <div className="recording-indicator">
-          Recording... {Math.max(0, Math.floor((Date.now() - startTime) / 1000))}s
-        </div>
-      )}
-
-      {/* Show controls only if not recording AND there are notes */}
-      {!isRecording && recordedNotes.length > 0 && (
-        <div className="recording-controls">
-          <h3>Your Recording</h3>
-          <p>{recordedNotes.filter(n => n.duration > 0).length} notes recorded</p>
-          <div className="control-buttons">
-            <button
-              className="play-button"
-              onClick={playRecording}
-              disabled={isPlaying}
+    {/* New layout structure with left and right columns */}
+    <div className="piano-content-wrapper">
+      {/* Left column for parameter controls */}
+      <div className="left-column">
+        {/* Parameter Controls Section */}
+        <div className="parameter-controls-section">
+          <div className="parameter-header">
+            <h3>AI Generation Settings</h3>
+            <button 
+              className="info-button" 
+              onClick={() => setShowInfo(!showInfo)}
             >
-              {isPlaying ? 'Playing...' : 'Play Recording'}
-            </button>
-            <button className="save-button" onClick={saveMidiRecording}>
-              Generate
+              {showInfo ? 'Hide Info' : 'Show Info'}
             </button>
           </div>
+          
+          {showInfo && (
+            <div className="parameter-info">
+              <p>Adjust these parameters to control how the AI completes your composition:</p>
+              <ul>
+                <li><strong>Bars to Generate:</strong> Number of musical bars the AI will create (longer compositions = more bars)</li>
+                <li><strong>Temperature:</strong> Controls randomness (higher = more creative but less predictable)</li>
+                <li><strong>Top-K:</strong> Limits options AI considers (lower = more focused on most likely notes)</li>
+              </ul>
+            </div>
+          )}
+          
+          <div className="slider-container">
+            {renderParameterSlider(
+              'nTargetBar',
+              'Bars to Generate',
+              1,
+              16,
+              1,
+              'Number of musical bars the AI will generate'
+            )}
+            
+            {renderParameterSlider(
+              'temperature',
+              'Temperature',
+              0.1,
+              1.5,
+              0.1,
+              'Controls randomness in generated music (higher = more diverse)'
+            )}
+            
+            {renderParameterSlider(
+              'topk',
+              'Top-K',
+              1,
+              50,
+              1,
+              'How many options the AI considers at each step (lower = more focused)'
+            )}
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Right column for piano and recording controls */}
+      <div className="right-column">
+        <div className="piano-container">
+          {/* White keys */}
+          <div className="white-keys">
+            {renderPianoKey('Q', 'C4')}
+            {renderPianoKey('W', 'D4')}
+            {renderPianoKey('E', 'E4')}
+            {renderPianoKey('R', 'F4')}
+            {renderPianoKey('T', 'G4')}
+            {renderPianoKey('Y', 'A4')}
+            {renderPianoKey('U', 'B4')}
+            {renderPianoKey('I', 'C5')}
+            {renderPianoKey('O', 'D5')}
+            {renderPianoKey('P', 'E5')}
+            {renderPianoKey('Z', 'F5')}
+            {renderPianoKey('X', 'G5')}
+            {renderPianoKey('C', 'A5')}
+            {renderPianoKey('V', 'B5')}
+          </div>
+
+          {/* Black keys */}
+          <div className="black-keys">
+            {renderPianoKey('2', 'C#4', true)}
+            {renderPianoKey('3', 'D#4', true)}
+            {renderPianoKey('5', 'F#4', true)}
+            {renderPianoKey('6', 'G#4', true)}
+            {renderPianoKey('7', 'A#4', true)}
+            {renderPianoKey('9', 'C#5', true)}
+            {renderPianoKey('0', 'D#5', true)}
+            {renderPianoKey('S', 'F#5', true)}
+            {renderPianoKey('D', 'G#5', true)}
+            {renderPianoKey('F', 'A#5', true)}
+          </div>
+        </div>
+
+        {isRecording && startTime && (
+          <div className="recording-indicator">
+            Recording... {Math.max(0, Math.floor((Date.now() - startTime) / 1000))}s
+          </div>
+        )}
+
+        {/* Show controls only if not recording AND there are notes */}
+        {!isRecording && recordedNotes.length > 0 && (
+          <div className="recording-controls">
+            <h3>Your Recording</h3>
+            <p>{recordedNotes.filter(n => n.duration > 0).length} notes recorded</p>
+            <div className="control-buttons">
+              <button
+                className="play-button"
+                onClick={playRecording}
+                disabled={isPlaying}
+              >
+                {isPlaying ? 'Playing...' : 'Play Recording'}
+              </button>
+              <button className="save-button" onClick={saveMidiRecording}>
+                Generate
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
-  );
+  </div>
+);
 };
 
 export default Piano;
