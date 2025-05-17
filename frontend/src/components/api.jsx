@@ -24,27 +24,36 @@ export const fetchSanitizeAudio = async (inpath) => {
   }
 };
 
-// 3. POST /generate
-export const fetchGenerate = async (inpath) => {
+// 3. POST /generate (with all parameters)
+export const fetchGenerate = async (
+  inpath, 
+  temperature = 0.5, 
+  n_target_bar = 8, 
+  topk = 10
+) => {
   try {
     const res = await fetch('http://localhost:5000/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inpath })
+      body: JSON.stringify({
+        inpath,
+        temperature: Number(temperature),
+        n_target_bar: Number(n_target_bar),
+        topk: Number(topk)
+      })
     });
 
     if (!res.ok) {
-      throw new Error('Generate request failed');
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'Generation failed');
     }
 
-    // Return the blob directly
     return await res.blob();
   } catch (err) {
     console.error('Generate error:', err);
     throw err;
   }
 };
-
 // 4. GET /test
 export const fetchTest = async () => {
   try {

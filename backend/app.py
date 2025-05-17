@@ -40,6 +40,13 @@ def sanitize():
 @app.route('/generate', methods=['POST'])
 def generate():
     if request.method == 'POST':
+        # Default parameters
+        default_params = {
+            'n_target_bar': 8,
+            'temperature': 0.5,
+            'topk': 10
+        }
+
         # Handle both JSON and file upload
         if request.files:
             file = request.files['file']
@@ -50,11 +57,35 @@ def generate():
             with tempfile.NamedTemporaryFile(dir=get_temp_dir(), suffix='.mid', delete=False) as temp_in:
                 file.save(temp_in.name)
                 inpath = temp_in.name
+            
+            # Extract parameters from form data
+            params = {
+                'n_target_bar': request.form.get('n_target_bar', default_params['n_target_bar']),
+                'temperature': request.form.get('temperature', default_params['temperature']),
+                'topk': request.form.get('topk', default_params['topk'])
+            }
         else:
             data = request.get_json()
             inpath = data.get("inpath")
             if inpath:
-                inpath = os.path.normpath(inpath)  # Normalize path separators
+                inpath = os.path.normpath(inpath)
+            
+            # Extract parameters from JSON
+            params = {
+                'n_target_bar': data.get('n_target_bar', default_params['n_target_bar']),
+                'temperature': data.get('temperature', default_params['temperature']),
+                'topk': data.get('topk', default_params['topk'])
+            }
+
+        # Validate and convert parameters
+        try:
+            generation_params = {
+                'n_target_bar': int(params['n_target_bar']),
+                'temperature': float(params['temperature']),
+                'topk': int(params['topk'])
+            }
+        except ValueError as e:
+            return {'error': f'Invalid parameter value: {str(e)}'}, 400
 
         # Create output temp file
         with tempfile.NamedTemporaryFile(dir=get_temp_dir(), suffix='.mid', delete=False) as temp_out:
@@ -65,19 +96,16 @@ def generate():
                 checkpoint='./remi/REMI-tempo-checkpoint',
                 is_training=False)
             
-            # generate continuation
+            # Generate with all parameters
             model.generate(
-                n_target_bar=8,
-                temperature=0.5,
-                topk=10,
+                **generation_params,
                 output_path=outpath,
                 prompt=inpath)
             
-            # Read the generated file and return as response
             with open(outpath, 'rb') as f:
                 midi_data = f.read()
             
-            # Clean up temp files
+            # Cleanup
             try:
                 os.unlink(inpath)
                 os.unlink(outpath)
@@ -92,21 +120,10 @@ def generate():
                 headers={"Content-Disposition": "attachment;filename=generated.mid"})
             
         except Exception as e:
-            # Clean up temp files if they exist
             if 'inpath' in locals() and os.path.exists(inpath):
-                try:
-                    os.unlink(inpath)
-                except:
-                    pass
+                os.unlink(inpath)
             if 'outpath' in locals() and os.path.exists(outpath):
-                try:
-                    os.unlink(outpath)
-                except:
-                    pass
-                
-            print("Exception occurred:", str(e))
-            import traceback
-            traceback.print_exc()
+                os.unlink(outpath)
             return {'error': str(e)}, 500
     
 @app.route('/test', methods=['GET'])
