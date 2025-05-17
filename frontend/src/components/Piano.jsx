@@ -577,32 +577,54 @@ const Piano = ({ onMidiSaved }) => {
 
   // Upload MIDI to the backend
   const sendMidiToBackend = async (blob, filename = "recording.mid") => {
-    const formData = new FormData();
-    formData.append('file', blob, filename);
+  const formData = new FormData();
+  formData.append('file', blob, filename);
 
-    try {
-      const response = await fetch('http://localhost:5000/upload_midi', {
-        method: 'POST',
-        body: formData
-      });
+  try {
+    // 1. Upload the MIDI file
+    const uploadResponse = await fetch('http://localhost:5000/upload_midi', {
+      method: 'POST',
+      body: formData
+    });
 
-      if (!response.ok) {
-        throw new Error("MIDI upload failed");
-      }
-
-    const data = await response.json();
-    console.log("MIDI uploaded and saved on backend at:", data.path);
-
-    // Use the path returned from the server
-    if (data.path) {
-      await fetchGenerate(data.path);
-      } else {
-        console.error("No path received from server");
-      }
-    } catch (err) {
-      console.error("Error in MIDI upload:", err);
+    if (!uploadResponse.ok) {
+      throw new Error("MIDI upload failed");
     }
-  };
+
+    const uploadData = await uploadResponse.json();
+    console.log("MIDI uploaded and saved on backend at:", uploadData.path);
+
+    // 2. Call the generate endpoint and handle the response as a blob
+    const generateResponse = await fetch('http://localhost:5000/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inpath: uploadData.path })
+    });
+
+    if (!generateResponse.ok) {
+      throw new Error("Generation failed");
+    }
+
+    // 3. Get the generated MIDI file as a blob
+    const generatedBlob = await generateResponse.blob();
+    
+    // 4. Create download link and trigger download
+    const downloadUrl = window.URL.createObjectURL(generatedBlob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `generated-composition-${Date.now()}.mid`;
+    document.body.appendChild(a);
+    a.click();
+    
+    // 5. Cleanup
+    window.URL.revokeObjectURL(downloadUrl);
+    document.body.removeChild(a);
+
+  } catch (err) {
+    console.error("Error in MIDI processing:", err);
+    alert(`Error generating composition: ${err.message}`);
+  }
+};
 
   // Save the MIDI recording
   const saveMidiRecording = () => {

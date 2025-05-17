@@ -32,10 +32,16 @@ export const fetchGenerate = async (inpath) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inpath })
     });
-    const data = await res.json();
-    return data;
+
+    if (!res.ok) {
+      throw new Error('Generate request failed');
+    }
+
+    // Return the blob directly
+    return await res.blob();
   } catch (err) {
     console.error('Generate error:', err);
+    throw err;
   }
 };
 

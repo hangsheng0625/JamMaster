@@ -1,14 +1,19 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from remi.model import PopMusicTransformer
 from converter.converter import process_midi_file
 import os
+import tempfile
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes and all origins
 
-UPLOAD_FOLDER = './recordings'  # Relative to where Flask runs
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+def get_temp_dir():
+    """Get the appropriate temp directory for the current OS"""
+    return os.path.join(tempfile.gettempdir(), 'jamtemp')
+
+# Create temp directory if it doesn't exist
+os.makedirs(get_temp_dir(), exist_ok=True)
 
 # Route 1: Simple GET
 @app.route('/hello', methods=['GET'])
@@ -20,42 +25,89 @@ def sanitize():
     data = request.get_json()
 
     inpath = data.get("inpath")
-    outpath = data.get("inpath")
-    process_midi_file(inpath, outpath)
+    outpath = data.get("outpath")
+    
+    # Use temp files if paths aren't provided
+    if not inpath or not outpath:
+        with tempfile.NamedTemporaryFile(dir=get_temp_dir(), suffix='.mid', delete=False) as infile, \
+             tempfile.NamedTemporaryFile(dir=get_temp_dir(), suffix='.mid', delete=False) as outfile:
+            process_midi_file(infile.name, outfile.name)
+            return {'message': 'Audio processed with temp files'}, 200
+    else:
+        process_midi_file(inpath, outpath)
+        return {'message': 'Audio processed with provided paths'}, 200
 
-# Route 2: Generate 
 @app.route('/generate', methods=['POST'])
 def generate():
-    data = request.get_json()
-
-    inpath = data.get("inpath")
-    if inpath:
-        inpath = inpath.replace('\\', '/')
-    outpath = os.path.join(UPLOAD_FOLDER, "generated.mid")
-    try:
-        print("inpath", inpath)
-        print("we are in try")
-        model = PopMusicTransformer(
-            checkpoint='./remi/REMI-tempo-checkpoint',
-            is_training=False)
-        
-        # generate continuation
-        model.generate(
-            n_target_bar=16,
-            temperature=1.2,
-            topk=5,
-            output_path=outpath,
-            prompt=inpath)
+    if request.method == 'POST':
+        # Handle both JSON and file upload
+        if request.files:
+            file = request.files['file']
+            if file.filename == '':
+                return {'error': 'No selected file'}, 400
             
-        # close model
-        model.close()
-        return {'message': '', 'path': outpath}, 200
-    except Exception as e:
-        print("Exception occurred:", str(e))
-        import traceback
-        traceback.print_exc()  # This prints the full stack trace
-        return {'error': str(e)}, 500
-    
+            # Save to temp file
+            with tempfile.NamedTemporaryFile(dir=get_temp_dir(), suffix='.mid', delete=False) as temp_in:
+                file.save(temp_in.name)
+                inpath = temp_in.name
+        else:
+            data = request.get_json()
+            inpath = data.get("inpath")
+            if inpath:
+                inpath = os.path.normpath(inpath)  # Normalize path separators
+
+        # Create output temp file
+        with tempfile.NamedTemporaryFile(dir=get_temp_dir(), suffix='.mid', delete=False) as temp_out:
+            outpath = temp_out.name
+
+        try:
+            model = PopMusicTransformer(
+                checkpoint='./remi/REMI-tempo-checkpoint',
+                is_training=False)
+            
+            # generate continuation
+            model.generate(
+                n_target_bar=8,
+                temperature=0.5,
+                topk=10,
+                output_path=outpath,
+                prompt=inpath)
+            
+            # Read the generated file and return as response
+            with open(outpath, 'rb') as f:
+                midi_data = f.read()
+            
+            # Clean up temp files
+            try:
+                os.unlink(inpath)
+                os.unlink(outpath)
+            except:
+                pass
+            
+            model.close()
+            
+            return Response(
+                midi_data,
+                mimetype="audio/midi",
+                headers={"Content-Disposition": "attachment;filename=generated.mid"})
+            
+        except Exception as e:
+            # Clean up temp files if they exist
+            if 'inpath' in locals() and os.path.exists(inpath):
+                try:
+                    os.unlink(inpath)
+                except:
+                    pass
+            if 'outpath' in locals() and os.path.exists(outpath):
+                try:
+                    os.unlink(outpath)
+                except:
+                    pass
+                
+            print("Exception occurred:", str(e))
+            import traceback
+            traceback.print_exc()
+            return {'error': str(e)}, 500
     
 @app.route('/test', methods=['GET'])
 def test():
@@ -70,16 +122,20 @@ def upload_midi():
     if file.filename == '':
         return {'error': 'No selected file'}, 400
 
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
+    # Save to temp directory
+    with tempfile.NamedTemporaryFile(dir=get_temp_dir(), suffix='.mid', delete=False) as temp_file:
+        file.save(temp_file.name)
+        filepath = temp_file.name
 
-    # Convert to forward slashes for consistent cross-platform behavior
-    normalized_path = filepath.replace('\\', '/')
-    print(f"Saved MIDI to {filepath}, normalized as {normalized_path}")
+    # Return the normalized path
+    normalized_path = os.path.normpath(filepath)
+    print(f"Saved MIDI to temporary location: {normalized_path}")
     
-    # Return the normalized path with forward slashes
-    return {'message': 'MIDI uploaded and saved', 'path': normalized_path}, 200
+    return {
+        'message': 'MIDI uploaded to temporary storage',
+        'path': normalized_path,
+        'warning': 'File is temporary and will be deleted when the container shuts down'
+    }, 200
 
 if __name__ == '__main__':
     app.run(debug=True)
-
