@@ -627,13 +627,11 @@ const Piano = ({ onMidiSaved }) => {
 
     const uploadData = await uploadResponse.json();
     console.log("MIDI uploaded and saved on backend at:", uploadData.path);
-
+    console.log(modelParams);
     // 2. Call the generate endpoint and handle the response as a blob
-    const generateResponse = await fetch('http://localhost:5000/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inpath: uploadData.path })
-    });
+    const generateResponse = await fetchGenerate(
+      uploadData.path, modelParams.temperature, modelParams.nTargetBar, modelParams.topk
+    )
 
     if (!generateResponse.ok) {
       throw new Error("Generation failed");
