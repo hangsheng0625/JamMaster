@@ -28,7 +28,7 @@ export const fetchSanitizeAudio = async (inpath) => {
 export const fetchGenerate = async (
   inpath, 
   temperature = 0.5, 
-  n_target_bar = 8, 
+  nTargetBar = 8, // Changed from n_target_bar to match the parameter name in your component
   topk = 10
 ) => {
   try {
@@ -38,7 +38,7 @@ export const fetchGenerate = async (
       body: JSON.stringify({
         inpath,
         temperature: Number(temperature),
-        n_target_bar: Number(n_target_bar),
+        n_target_bar: Number(nTargetBar), // Convert to n_target_bar for backend compatibility
         topk: Number(topk)
       })
     });

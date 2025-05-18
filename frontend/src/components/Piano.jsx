@@ -622,36 +622,40 @@ const Piano = ({ onMidiSaved }) => {
     });
 
     if (!uploadResponse.ok) {
-      throw new Error("MIDI upload failed");
+      throw new Error(`MIDI upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
     }
 
     const uploadData = await uploadResponse.json();
     console.log("MIDI uploaded and saved on backend at:", uploadData.path);
-    console.log(modelParams);
-    // 2. Call the generate endpoint and handle the response as a blob
-    const generateResponse = await fetchGenerate(
-      uploadData.path, modelParams.temperature, modelParams.nTargetBar, modelParams.topk
-    )
+    console.log("Model parameters:", modelParams);
 
-    if (!generateResponse.ok) {
-      throw new Error("Generation failed");
+    // 2. Call the generate endpoint - note that fetchGenerate already returns a blob
+    try {
+      // This directly returns a blob according to your implementation
+      const generatedBlob = await fetchGenerate(
+        uploadData.path, 
+        modelParams.temperature, 
+        modelParams.nTargetBar, 
+        modelParams.topk
+      );
+      
+      // No need to call .blob() again - it's already a blob
+      
+      // 3. Create download link and trigger download
+      const downloadUrl = window.URL.createObjectURL(generatedBlob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `generated-composition-${Date.now()}.mid`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // 4. Cleanup
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+    } catch (genError) {
+      console.error("Error in generation step:", genError);
+      alert(`Generation failed: ${genError.message}`);
     }
-
-    // 3. Get the generated MIDI file as a blob
-    const generatedBlob = await generateResponse.blob();
-    
-    // 4. Create download link and trigger download
-    const downloadUrl = window.URL.createObjectURL(generatedBlob);
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = `generated-composition-${Date.now()}.mid`;
-    document.body.appendChild(a);
-    a.click();
-    
-    // 5. Cleanup
-    window.URL.revokeObjectURL(downloadUrl);
-    document.body.removeChild(a);
-
   } catch (err) {
     console.error("Error in MIDI processing:", err);
     alert(`Error generating composition: ${err.message}`);
