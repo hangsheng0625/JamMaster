@@ -6,10 +6,11 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 def main():
     # declare model
     model = PopMusicTransformer(
-        checkpoint='REMI-tempo-checkpoint',
+        checkpoint='REMI-tempo-chord-checkpoint',
         is_training=True)
     # prepare data
-    midi_paths = glob('YOUR PERSOANL FOLDER/*.midi') # you need to revise it
+    midi_paths = glob('classical-data/*.mid') # you need to revise it
+    print(f"Found {len(midi_paths)} MIDI files for training")
     training_data = model.prepare_data(midi_paths=midi_paths)
 
     # check output checkpoint folder
@@ -20,7 +21,7 @@ def main():
     # if use "REMI-tempo-checkpoint"
     # for example: my-love, cute-doggy, ...
     ####################################
-    output_checkpoint_folder = 'REMI-finetune' # your decision
+    output_checkpoint_folder = 'REMI-finetune-classical-checkpoint'
     if not os.path.exists(output_checkpoint_folder):
         os.mkdir(output_checkpoint_folder)
     

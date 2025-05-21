@@ -93,7 +93,7 @@ def generate():
 
         try:
             model = PopMusicTransformer(
-                checkpoint='./remi/REMI-tempo-checkpoint',
+                checkpoint='./remi/REMI-tempo-chord-checkpoint',
                 is_training=False)
             
             # Generate with all parameters

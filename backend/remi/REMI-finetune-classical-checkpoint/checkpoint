@@ -1,0 +1,6 @@
+model_checkpoint_path: "model-014-0.095"
+all_model_checkpoint_paths: "model-010-0.215"
+all_model_checkpoint_paths: "model-011-0.179"
+all_model_checkpoint_paths: "model-012-0.142"
+all_model_checkpoint_paths: "model-013-0.116"
+all_model_checkpoint_paths: "model-014-0.095"

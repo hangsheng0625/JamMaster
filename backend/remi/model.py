@@ -85,24 +85,43 @@ class PopMusicTransformer(object):
                 proj_same_dim=True)
         self.avg_loss = tf.reduce_mean(loss)
         # vars
-        all_vars = tf.compat.v1.trainable_variables()
-        grads = tf.gradients(self.avg_loss, all_vars)
-        grads_and_vars = list(zip(grads, all_vars))
-        all_trainable_vars = tf.reduce_sum([tf.reduce_prod(v.shape) for v in tf.compat.v1.trainable_variables()])
-        # optimizer
-        decay_lr = tf.compat.v1.train.cosine_decay(
-            self.learning_rate,
-            global_step=self.global_step,
-            decay_steps=400000,
-            alpha=0.004)
-        optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=decay_lr)
-        self.train_op = optimizer.apply_gradients(grads_and_vars, self.global_step)
-        # saver
-        self.saver = tf.compat.v1.train.Saver()
+        if self.is_training:
+        # vars
+            all_vars = tf.compat.v1.trainable_variables()
+            grads = tf.gradients(self.avg_loss, all_vars)
+            grads_and_vars = list(zip(grads, all_vars))
+            all_trainable_vars = tf.reduce_sum([tf.reduce_prod(v.shape) for v in tf.compat.v1.trainable_variables()])
+            # optimizer
+            decay_lr = tf.compat.v1.train.cosine_decay(
+                self.learning_rate,
+                global_step=self.global_step,
+                decay_steps=400000,
+                alpha=0.004)
+            optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=decay_lr)
+            self.train_op = optimizer.apply_gradients(grads_and_vars, self.global_step)
+        
+            # For inference, only load model variables (exclude optimizer variables)
+        if not self.is_training:
+            # Filter out Adam optimizer variables for inference
+            var_list = [v for v in tf.compat.v1.global_variables() if 'Adam' not in v.name]
+            self.saver = tf.compat.v1.train.Saver(var_list=var_list)
+        else:
+            # For training, include all variables
+            self.saver = tf.compat.v1.train.Saver()
+            
+        # Session setup
         config = tf.compat.v1.ConfigProto(allow_soft_placement=True)
         config.gpu_options.allow_growth = True
         self.sess = tf.compat.v1.Session(config=config)
-        self.saver.restore(self.sess, self.checkpoint_path)
+        
+        # Initialize variables and restore from checkpoint
+        self.sess.run(tf.compat.v1.global_variables_initializer())
+        try:
+            self.saver.restore(self.sess, self.checkpoint_path)
+            print(f"Model restored from {self.checkpoint_path}")
+        except Exception as e:
+            print(f"Warning during model restoration: {e}")
+            print("Continuing with partially restored model")
 
     ########################################
     # temperature sampling
@@ -124,10 +143,49 @@ class PopMusicTransformer(object):
     ########################################
     # extract events for prompt continuation
     ########################################
+    def _find_closest_velocity(self, velocity):
+        """Find the closest available velocity in the dictionary."""
+        available_velocities = []
+        for key in self.event2word.keys():
+            if key.startswith('Note Velocity_'):
+                try:
+                    vel = int(key.split('_')[1])
+                    available_velocities.append(vel)
+                except ValueError:
+                    continue
+        
+        if not available_velocities:
+            return 21  # Default to a common velocity if none found
+        
+        closest_velocity = min(available_velocities, key=lambda x: abs(x - velocity))
+        return closest_velocity
+
+    # def extract_events(self, input_path):
+    #     note_items, tempo_items = utils.read_items(input_path)
+    #     note_items = utils.quantize_items(note_items)
+    #     max_time = note_items[-1].end
+    #     if 'chord' in self.checkpoint_path:
+    #         chord_items = utils.extract_chords(note_items)
+    #         items = chord_items + tempo_items + note_items
+    #     else:
+    #         items = tempo_items + note_items
+    #     groups = utils.group_items(items, max_time)
+    #     events = utils.item2event(groups)
+    #     return events
+
     def extract_events(self, input_path):
         note_items, tempo_items = utils.read_items(input_path)
         note_items = utils.quantize_items(note_items)
         max_time = note_items[-1].end
+        
+        # Check for OOV velocities and modify them
+        for note in note_items:
+            velocity_key = f'Note Velocity_{note.velocity}'
+            if velocity_key not in self.event2word:
+                closest_velocity = self._find_closest_velocity(note.velocity)
+                print(f"Replacing {velocity_key} with closest available: Note Velocity_{closest_velocity}")
+                note.velocity = closest_velocity
+        
         if 'chord' in self.checkpoint_path:
             chord_items = utils.extract_chords(note_items)
             items = chord_items + tempo_items + note_items
@@ -238,9 +296,22 @@ class PopMusicTransformer(object):
                     if event.name == 'Note Velocity':
                         # replace with max velocity based on our training data
                         words.append(self.event2word['Note Velocity_21'])
+                    # Handle Tempo Value OOV with nearest available value
+                    elif event.name == 'Tempo Value':
+                        tempo_value = int(event.value)
+                        # Find closest available Tempo Value in dictionary
+                        available_values = [int(k.split('_')[1]) for k in self.event2word.keys() 
+                                        if k.startswith('Tempo Value_')]
+                        if not available_values:
+                            print(f"No Tempo Value entries found in dictionary. Using default.")
+                            words.append(self.event2word['Tempo Value_0'])
+                        else:
+                            closest_value = min(available_values, key=lambda x: abs(x - tempo_value))
+                            closest_key = f'Tempo Value_{closest_value}'
+                            print(f"Replacing {e} with closest available: {closest_key}")
+                            words.append(self.event2word[closest_key])
                     else:
-                        # something is wrong
-                        # you should handle it for your own purpose
+                        # Skip other OOV events with warning
                         print('something is wrong! {}'.format(e))
             all_words.append(words)
         # to training data
