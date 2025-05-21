@@ -4,6 +4,9 @@ FROM tensorflow/tensorflow:1.14.0-gpu-py3
 # Set working directory
 WORKDIR /app
 
+# Fix NVIDIA repository key issue
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     libsndfile1 \
