@@ -1,7 +1,9 @@
+const apiUrl = process.env.REACT_APP_API_URL;
+
 // 1. GET /hello
 export const fetchHello = async () => {
   try {
-    const res = await fetch('http://localhost:5000/hello');
+    const res = await fetch(`${apiUrl}/hello`);
     const data = await res.json();
     return data;
   } catch (err) {
@@ -12,7 +14,7 @@ export const fetchHello = async () => {
 // 2. POST /sanitize_audio
 export const fetchSanitizeAudio = async (inpath) => {
   try {
-    const res = await fetch('http://localhost:5000/sanitize_audio', {
+    const res = await fetch(`${apiUrl}/sanitize_audio`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inpath })
@@ -32,7 +34,7 @@ export const fetchGenerate = async (
   topk = 10
 ) => {
   try {
-    const res = await fetch('http://localhost:5000/generate', {
+    const res = await fetch(`${apiUrl}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -57,7 +59,7 @@ export const fetchGenerate = async (
 // 4. GET /test
 export const fetchTest = async () => {
   try {
-    const res = await fetch('http://localhost:5000/test');
+    const res = await fetch(`${apiUrl}/test`);
     const data = await res.json();
     return data;
   } catch (err) {
