@@ -9,9 +9,10 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 8080,
     allowedHosts: [
-      'jammaster-frontend-5wvd4bkaxq-as.a.run.app',
-      // You can also use a wildcard to allow all hosts
-      // '*.a.run.app'
+      '*.run.app',
+      // Include the specific domain we're seeing
+      'jammaster-frontend-567737315998.asia-southeast1.run.app'
+    
     ]
   }
 })
