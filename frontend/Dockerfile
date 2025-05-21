@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-alpine as build
+FROM node:20-alpine AS build
 
 # Set working directory
 WORKDIR /app
@@ -27,12 +27,15 @@ FROM nginx:alpine
 # Copy built assets to nginx
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Configure nginx for Cloud Run
-RUN sed -i.bak 's/listen\(.*\)80;/listen $PORT;/' /etc/nginx/conf.d/default.conf && \
-    sed -i.bak 's/^user *nginx;/user nobody;/' /etc/nginx/nginx.conf
+# Copy custom nginx config and entrypoint script
+COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx/docker-entrypoint.sh /docker-entrypoint.sh
+
+# Make entrypoint script executable
+RUN chmod +x /docker-entrypoint.sh
 
 # Set environment variable with a default value
 ENV PORT=8080
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Run the entrypoint script
+ENTRYPOINT ["/docker-entrypoint.sh"]
