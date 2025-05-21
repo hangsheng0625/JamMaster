@@ -4,14 +4,14 @@ FROM node:20-alpine
 # Set working directory
 WORKDIR /app
 
-# Copy package.json
-COPY frontend/package*.json ./
+# Copy package.json files from the current directory
+COPY package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy frontend code
-COPY frontend/ ./
+# Copy all frontend code from the current directory
+COPY . ./
 
 # Build the app
 RUN npm run build
