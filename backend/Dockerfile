@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy everything to the container
+# Copy everything from the current directory (backend) to /app
 COPY . /app
 
 # Install Python dependencies
@@ -24,4 +24,4 @@ ENV PYTHONPATH=/app
 EXPOSE 5000
 
 # Command to run the backend
-CMD ["python", "backend/app.py"]
+CMD ["python", "app.py"]
