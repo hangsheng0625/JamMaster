@@ -10,15 +10,12 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
-COPY requirements.txt .
+# Copy everything to the container
+COPY . /app
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r Requirements.txt
-
-# Copy REMI model and your backend code
-COPY ./remi /app/remi
-COPY ./backend /app/backend
+RUN pip install --no-cache-dir Flask==2.0.3 Flask-API==3.1 Flask-Cors==5.0.0 \
+    miditoolkit==1.0.0 numpy==1.19.5 scipy==1.5.4
 
 # Set environment variables
 ENV PYTHONPATH=/app
