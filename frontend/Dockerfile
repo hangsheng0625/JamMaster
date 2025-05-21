@@ -18,8 +18,12 @@ RUN if [ -f "src/styles/loadingpage.css" ] && [ ! -f "src/styles/loadingPage.css
     cp src/styles/loadingpage.css src/styles/loadingPage.css; \
     fi
 
-# Expose the port
-EXPOSE 5173
+# Expose the port that Cloud Run expects
+EXPOSE 8080
 
-# Run in development mode
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+# Use environment variable for port
+ENV PORT=8080
+ENV HOST=0.0.0.0
+
+# Run in development mode with port configured from environment variable
+CMD ["sh", "-c", "npm run dev -- --port ${PORT:-8080} --host ${HOST:-0.0.0.0}"]
