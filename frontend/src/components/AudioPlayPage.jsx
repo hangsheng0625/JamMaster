@@ -1,9 +1,11 @@
+// First install: npm install midi-player-js
+
 // src/components/AudioPlayPage.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import * as Tone from 'tone';
+import MidiPlayer from 'midi-player-js';
 import robot from '../assets/robot.png';
 import '../styles/audioPlay.css';
-import { fetchGenerate } from './api'; // Import the API function
 
 const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -12,17 +14,15 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
   const [volume, setVolume] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isMidiFile, setIsMidiFile] = useState(false);
-  const [midiData, setMidiData] = useState(null);
   const [loadingMidi, setLoadingMidi] = useState(false);
   const [midiError, setMidiError] = useState('');
   
   const audioRef = useRef(null);
   const synthRef = useRef(null);
+  const midiPlayerRef = useRef(null);
   const progressUpdateInterval = useRef(null);
-  const scheduledEventsRef = useRef([]);
-  const startTimeRef = useRef(0);
 
-  // AI Generation parameters (similar to Piano component)
+  // AI Generation parameters
   const [modelParams, setModelParams] = useState({
     nTargetBar: 8,
     temperature: 0.9,
@@ -38,174 +38,221 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
         synthRef.current.releaseAll();
         synthRef.current.dispose();
       }
-      scheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
-      scheduledEventsRef.current = [];
+      if (midiPlayerRef.current) {
+        midiPlayerRef.current.stop();
+      }
+      if (progressUpdateInterval.current) {
+        clearInterval(progressUpdateInterval.current);
+      }
     };
   }, []);
 
-  // Parse MIDI file using Web MIDI API or a simple parser
-  const parseMidiFile = async (file) => {
+  // Setup MIDI player with accurate duration calculation
+  const setupMidiPlayer = async (file) => {
     try {
       setLoadingMidi(true);
       setMidiError('');
       
-      const arrayBuffer = await file.arrayBuffer();
-      const midiData = parseMIDI(arrayBuffer);
+      // Create new MIDI player instance
+      const player = new MidiPlayer.Player();
+      midiPlayerRef.current = player;
       
-      if (midiData && midiData.tracks && midiData.tracks.length > 0) {
-        setMidiData(midiData);
-        // Calculate total duration from MIDI events
-        const totalDuration = calculateMidiDuration(midiData);
-        setDuration(totalDuration);
-        return true;
-      } else {
-        throw new Error('Invalid MIDI file format');
-      }
+      // Read file as array buffer
+      const arrayBuffer = await file.arrayBuffer();
+      
+      // Load MIDI data
+      player.loadArrayBuffer(arrayBuffer);
+      
+      // Get both reported and calculated durations
+      const reportedDuration = player.getSongTime();
+      const accurateDuration = calculateAccurateDuration(player);
+      
+      console.log(`Duration comparison:`);
+      console.log(`- Library getSongTime(): ${reportedDuration.toFixed(2)}s (${Math.floor(reportedDuration/60)}:${Math.floor(reportedDuration%60).toString().padStart(2,'0')})`);
+      console.log(`- Event-based calculation: ${accurateDuration.toFixed(2)}s (${Math.floor(accurateDuration/60)}:${Math.floor(accurateDuration%60).toString().padStart(2,'0')})`);
+      
+      // Use the more accurate duration (usually the shorter one)
+      const finalDuration = Math.min(reportedDuration, accurateDuration);
+      setDuration(finalDuration * 1000);
+      
+      // Ensure player starts at beginning
+      player.skipToSeconds(0);
+      setCurrentTime(0);
+      
+      const minutes = Math.floor(finalDuration / 60);
+      const seconds = Math.floor(finalDuration % 60);
+      console.log(`Using final duration: ${minutes}:${seconds.toString().padStart(2,'0')} (${finalDuration.toFixed(2)}s)`);
+      
+      // Setup event listeners
+      player.on('midiEvent', handleMidiEvent);
+      player.on('endOfFile', handleEndOfFile);
+      
+      return true;
     } catch (error) {
-      console.error('Error parsing MIDI file:', error);
-      setMidiError('Failed to parse MIDI file. Please ensure it\'s a valid MIDI file.');
+      console.error('Error loading MIDI file:', error);
+      setMidiError('Failed to load MIDI file. Please ensure it\'s a valid MIDI file.');
       return false;
     } finally {
       setLoadingMidi(false);
     }
   };
 
-  // Simple MIDI parser (basic implementation)
-  const parseMIDI = (arrayBuffer) => {
-    const view = new DataView(arrayBuffer);
-    let offset = 0;
+  // Handle end of MIDI file
+  const handleEndOfFile = () => {
+    console.log('MIDI playback finished at:', (currentTime / 1000).toFixed(2), 'seconds');
     
-    // Check MIDI header
-    const headerChunk = String.fromCharCode(...new Uint8Array(arrayBuffer, 0, 4));
-    if (headerChunk !== 'MThd') {
-      throw new Error('Not a valid MIDI file');
+    setIsPlaying(false);
+    setCurrentTime(0);
+    
+    if (progressUpdateInterval.current) {
+      clearInterval(progressUpdateInterval.current);
+      progressUpdateInterval.current = null;
     }
     
-    offset += 4; // Skip "MThd"
-    const headerLength = view.getUint32(offset); // Should be 6
-    offset += 4;
-    
-    const format = view.getUint16(offset);
-    offset += 2;
-    const trackCount = view.getUint16(offset);
-    offset += 2;
-    const division = view.getUint16(offset);
-    offset += 2;
-    
-    const tracks = [];
-    
-    // Parse tracks
-    for (let i = 0; i < trackCount; i++) {
-      const trackChunk = String.fromCharCode(...new Uint8Array(arrayBuffer, offset, 4));
-      if (trackChunk !== 'MTrk') {
-        break;
-      }
-      offset += 4;
-      
-      const trackLength = view.getUint32(offset);
-      offset += 4;
-      
-      const trackData = new Uint8Array(arrayBuffer, offset, trackLength);
-      const events = parseTrackEvents(trackData, division);
-      tracks.push({ events });
-      
-      offset += trackLength;
+    // Release all notes
+    if (synthRef.current) {
+      synthRef.current.releaseAll();
     }
-    
-    return {
-      format,
-      trackCount,
-      division,
-      tracks
-    };
   };
 
-  // Parse track events (improved timing)
-  const parseTrackEvents = (trackData, division) => {
-    const events = [];
-    let offset = 0;
-    let currentTime = 0;
-    let runningStatus = 0;
-    let tempo = 500000; // Default tempo: 500,000 microseconds per quarter note (120 BPM)
+  // Handle MIDI events and convert to Tone.js
+  const handleMidiEvent = async (event) => {
+    if (!synthRef.current) return;
     
-    while (offset < trackData.length) {
-      // Read variable length delta time
-      let deltaTime = 0;
-      let byte;
-      do {
-        byte = trackData[offset++];
-        deltaTime = (deltaTime << 7) | (byte & 0x7F);
-      } while (byte & 0x80);
-      
-      currentTime += deltaTime;
-      
-      if (offset >= trackData.length) break;
-      
-      let status = trackData[offset];
-      
-      // Handle running status
-      if (status < 0x80) {
-        status = runningStatus;
-      } else {
-        offset++;
-        runningStatus = status;
-      }
-      
-      const eventType = status & 0xF0;
-      const channel = status & 0x0F;
-      
-      if (eventType === 0x90 || eventType === 0x80) { // Note on/off
-        if (offset + 1 >= trackData.length) break;
-        
-        const note = trackData[offset++];
-        const velocity = trackData[offset++];
-        
-        // Convert to note name
-        const noteName = midiNoteToName(note);
-        
-        // Better timing calculation
-        const timeInSeconds = (currentTime / division) * (tempo / 1000000);
-        
-        events.push({
-          type: (eventType === 0x90 && velocity > 0) ? 'noteOn' : 'noteOff',
-          time: timeInSeconds,
-          ticks: currentTime,
-          note: noteName,
-          velocity: velocity,
-          channel: channel
-        });
-      } else if (eventType === 0xFF) { // Meta event
-        if (offset >= trackData.length) break;
-        const metaType = trackData[offset++];
-        
-        // Read length
-        let metaLength = 0;
-        do {
-          byte = trackData[offset++];
-          metaLength = (metaLength << 7) | (byte & 0x7F);
-        } while (byte & 0x80);
-        
-        // Handle tempo changes
-        if (metaType === 0x51 && metaLength === 3) { // Set Tempo
-          tempo = (trackData[offset] << 16) | (trackData[offset + 1] << 8) | trackData[offset + 2];
-        }
-        
-        offset += metaLength; // Skip meta data
-        
-        if (metaType === 0x2F) { // End of track
-          break;
-        }
-      } else {
-        // Skip other events
-        if (eventType === 0xC0 || eventType === 0xD0) {
-          offset++; // 1 data byte
-        } else {
-          offset += 2; // 2 data bytes
-        }
-      }
+    // Ensure audio context is started
+    if (Tone.context.state !== 'running') {
+      await Tone.start();
     }
     
-    return events;
+    if (event.name === 'Note on' && event.velocity > 0) {
+      // Convert MIDI note number to note name
+      const noteName = midiNoteToName(event.noteNumber);
+      const velocity = event.velocity / 127; // Normalize velocity
+      
+      try {
+        synthRef.current.triggerAttack(noteName, undefined, velocity);
+      } catch (error) {
+        console.warn('Error triggering note:', noteName, error);
+      }
+    } else if (event.name === 'Note off' || (event.name === 'Note on' && event.velocity === 0)) {
+      // Note off event
+      const noteName = midiNoteToName(event.noteNumber);
+      
+      try {
+        synthRef.current.triggerRelease(noteName);
+      } catch (error) {
+        console.warn('Error releasing note:', noteName, error);
+      }
+    }
+  };
+
+  // Calculate accurate duration by analyzing actual MIDI events
+  const calculateAccurateDuration = (player) => {
+    try {
+      // Method 1: Find the last meaningful event (note-on/note-off)
+      let lastEventTick = 0;
+      let hasNoteEvents = false;
+      
+      // Get all events from the player
+      const events = player.getEvents();
+      
+      events.forEach(event => {
+        // Look for note events and other meaningful events
+        if (event.name === 'Note on' || event.name === 'Note off') {
+          lastEventTick = Math.max(lastEventTick, event.tick || 0);
+          hasNoteEvents = true;
+        } else if (event.name === 'Controller Change' || event.name === 'Program Change') {
+          // Include other musical events but with lower priority
+          if (hasNoteEvents) {
+            lastEventTick = Math.max(lastEventTick, event.tick || 0);
+          }
+        }
+      });
+      
+      if (lastEventTick > 0) {
+        // Convert ticks to seconds using the player's method
+        const accurateDuration = player.ticksToSeconds ? 
+          player.ticksToSeconds(lastEventTick) : 
+          (lastEventTick / (player.division || 480)) * (60 / (player.tempo || 120));
+        
+        console.log(`Event-based duration calculation:`);
+        console.log(`- Last event tick: ${lastEventTick}`);
+        console.log(`- Converted to seconds: ${accurateDuration.toFixed(2)}s`);
+        
+        return accurateDuration;
+      }
+      
+      // Fallback to library method if no events found
+      return player.getSongTime();
+      
+    } catch (error) {
+      console.warn('Error calculating accurate duration:', error);
+      return player.getSongTime();
+    }
+  };
+
+  // Setup progress tracking using tick-based approach (more reliable)
+  const setupProgressTracking = () => {
+    if (progressUpdateInterval.current) {
+      clearInterval(progressUpdateInterval.current);
+    }
+    
+    // Manual time tracking for more accuracy
+    const startTime = Date.now();
+    const initialCurrentTime = currentTime;
+    
+    progressUpdateInterval.current = setInterval(() => {
+      if (midiPlayerRef.current && midiPlayerRef.current.isPlaying()) {
+        try {
+          // Use manual time calculation instead of getSongTimeRemaining()
+          const elapsed = Date.now() - startTime;
+          const newCurrentTime = initialCurrentTime + elapsed;
+          
+          // Alternative: Try tick-based calculation as backup
+          const currentTick = midiPlayerRef.current.getCurrentTick();
+          const totalTicks = midiPlayerRef.current.getTotalTicks();
+          
+          if (totalTicks > 0) {
+            const tickProgress = currentTick / totalTicks;
+            const tickBasedTime = tickProgress * duration;
+            
+            // Use manual time but validate against tick-based time
+            let finalTime = newCurrentTime;
+            
+            // If there's a big discrepancy, prefer tick-based time
+            if (Math.abs(newCurrentTime - tickBasedTime) > 1000) {
+              finalTime = tickBasedTime;
+            }
+            
+            console.log(`Manual: ${(newCurrentTime/1000).toFixed(2)}s, Tick-based: ${(tickBasedTime/1000).toFixed(2)}s, Using: ${(finalTime/1000).toFixed(2)}s`);
+            
+            if (finalTime >= duration) {
+              handleEndOfFile();
+            } else {
+              setCurrentTime(Math.max(0, finalTime));
+            }
+          } else {
+            // Fallback to manual tracking
+            if (newCurrentTime >= duration) {
+              handleEndOfFile();
+            } else {
+              setCurrentTime(Math.max(0, newCurrentTime));
+            }
+          }
+        } catch (error) {
+          console.warn('Error in progress tracking:', error);
+          // Fallback to manual time tracking
+          const elapsed = Date.now() - startTime;
+          const newCurrentTime = initialCurrentTime + elapsed;
+          
+          if (newCurrentTime >= duration) {
+            handleEndOfFile();
+          } else {
+            setCurrentTime(Math.max(0, newCurrentTime));
+          }
+        }
+      }
+    }, 100);
   };
 
   // Convert MIDI note number to note name
@@ -214,36 +261,6 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
     const octave = Math.floor(midiNote / 12) - 1;
     const note = noteNames[midiNote % 12];
     return `${note}${octave}`;
-  };
-
-  // Calculate MIDI duration and normalize timing
-  const calculateMidiDuration = (midiData) => {
-    let maxTime = 0;
-    let minTime = Infinity;
-    
-    // Find the time range
-    midiData.tracks.forEach(track => {
-      track.events.forEach(event => {
-        if (event.time > maxTime) {
-          maxTime = event.time;
-        }
-        if (event.time < minTime) {
-          minTime = event.time;
-        }
-      });
-    });
-    
-    // Normalize events to start from 0
-    if (minTime > 0 && minTime !== Infinity) {
-      midiData.tracks.forEach(track => {
-        track.events.forEach(event => {
-          event.time = Math.max(0, event.time - minTime);
-        });
-      });
-      maxTime = maxTime - minTime;
-    }
-    
-    return Math.max(maxTime * 1000, 1000); // Convert to milliseconds, minimum 1 second
   };
 
   // Check if file is MIDI and set up accordingly
@@ -255,11 +272,18 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
       setIsMidiFile(isMidi);
       setCurrentTime(0);
       setDuration(0);
-      setMidiData(null);
       setMidiError('');
       
+      // Stop any existing playback
+      if (midiPlayerRef.current) {
+        midiPlayerRef.current.stop();
+      }
+      if (synthRef.current) {
+        synthRef.current.releaseAll();
+      }
+      
       if (isMidi) {
-        parseMidiFile(uploadedFile.file);
+        setupMidiPlayer(uploadedFile.file);
       } else if (audioRef.current) {
         // Set up regular audio file
         audioRef.current.src = uploadedFile.url;
@@ -272,7 +296,7 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
         
         const handleEnded = () => {
           setIsPlaying(false);
-          setCurrentTime(0); // Reset to beginning when audio ends
+          setCurrentTime(0);
           if (progressUpdateInterval.current) {
             clearInterval(progressUpdateInterval.current);
           }
@@ -289,13 +313,6 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
     }
   }, [uploadedFile]);
 
-  // Start audio context
-  const startAudio = async () => {
-    if (Tone.context.state !== 'running') {
-      await Tone.start();
-    }
-  };
-
   // Handle progress bar click for seeking
   const handleProgressClick = (e) => {
     if (!duration) return;
@@ -303,17 +320,38 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
     const progressBar = e.currentTarget;
     const rect = progressBar.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
-    const percentage = clickX / rect.width;
+    const percentage = Math.max(0, Math.min(1, clickX / rect.width));
     const newTime = percentage * duration;
     
-    if (isMidiFile) {
-      // For MIDI files, restart from the new position
-      if (isPlaying) {
-        stopPlayback();
-        setCurrentTime(newTime);
-        setTimeout(() => playMidiFromTime(newTime), 100);
-      } else {
-        setCurrentTime(newTime);
+    if (isMidiFile && midiPlayerRef.current) {
+      // Stop current playback
+      const wasPlaying = isPlaying;
+      if (wasPlaying) {
+        midiPlayerRef.current.stop();
+        setIsPlaying(false);
+        if (progressUpdateInterval.current) {
+          clearInterval(progressUpdateInterval.current);
+          progressUpdateInterval.current = null;
+        }
+      }
+      
+      // Release all notes
+      if (synthRef.current) {
+        synthRef.current.releaseAll();
+      }
+      
+      // Use skipToSeconds for more accurate seeking
+      const newTimeSeconds = newTime / 1000;
+      midiPlayerRef.current.skipToSeconds(newTimeSeconds);
+      setCurrentTime(newTime);
+      
+      // Resume if was playing
+      if (wasPlaying) {
+        setTimeout(() => {
+          midiPlayerRef.current.play();
+          setIsPlaying(true);
+          setupProgressTracking();
+        }, 100);
       }
     } else if (audioRef.current) {
       // For regular audio files
@@ -322,135 +360,58 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
     }
   };
 
-  // Play MIDI from specific time
-  const playMidiFromTime = async (startTime = 0) => {
-    if (!midiData || !synthRef.current) return;
-    
-    await startAudio();
-    
-    setIsPlaying(true);
-    startTimeRef.current = Date.now() - startTime;
-    
-    // Clear previous events
-    scheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
-    scheduledEventsRef.current = [];
-    
-    // Reset transport
-    Tone.Transport.cancel();
-    Tone.Transport.stop();
-    Tone.Transport.position = 0;
-    Tone.Transport.start();
-    
-    // Schedule events that should play after the start time
-    midiData.tracks.forEach(track => {
-      track.events.forEach(event => {
-        const eventTimeMs = event.time * 1000;
-        
-        // Only schedule events that happen after our start time
-        if (eventTimeMs >= startTime) {
-          const adjustedTime = (eventTimeMs - startTime) / 1000;
-          
-          if (event.type === 'noteOn') {
-            const eventId = Tone.Transport.scheduleOnce((time) => {
-              synthRef.current?.triggerAttack(event.note, time, event.velocity / 127);
-            }, adjustedTime);
-            scheduledEventsRef.current.push(eventId);
-            
-          } else if (event.type === 'noteOff') {
-            const eventId = Tone.Transport.scheduleOnce((time) => {
-              synthRef.current?.triggerRelease(event.note, time);
-            }, adjustedTime);
-            scheduledEventsRef.current.push(eventId);
-          }
-        }
-      });
-    });
-    
-    // Update progress
-    progressUpdateInterval.current = setInterval(() => {
-      const elapsed = Date.now() - startTimeRef.current;
-      if (elapsed >= duration) {
-        // Song finished - stop and reset to beginning
-        stopPlayback(true);
-      } else {
-        setCurrentTime(elapsed);
-      }
-    }, 50);
-    
-    // Auto-stop at the end
-    const remainingTime = (duration - startTime) / 1000;
-    if (remainingTime > 0) {
-      const stopEventId = Tone.Transport.scheduleOnce(() => {
-        // Song finished naturally - reset to beginning
-        stopPlayback(true);
-      }, remainingTime);
-      scheduledEventsRef.current.push(stopEventId);
-    }
-  };
-
-  // Stop playback
-  const stopPlayback = (resetToBeginning = false) => {
-    setIsPlaying(false);
-    
-    if (progressUpdateInterval.current) {
-      clearInterval(progressUpdateInterval.current);
-      progressUpdateInterval.current = null;
-    }
-    
-    if (isMidiFile) {
-      // Stop MIDI playback
-      scheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
-      scheduledEventsRef.current = [];
-      Tone.Transport.cancel();
-      Tone.Transport.stop();
-      
-      if (synthRef.current) {
-        synthRef.current.releaseAll();
-      }
-      
-      // Reset to beginning if requested or if playback completed naturally
-      if (resetToBeginning) {
-        setCurrentTime(0);
-      }
-    } else if (audioRef.current) {
-      // Stop regular audio
-      audioRef.current.pause();
-      if (resetToBeginning) {
-        audioRef.current.currentTime = 0;
-        setCurrentTime(0);
-      }
-    }
-  };
-
-  const formatTime = (ms) => {
-    if (typeof ms !== 'number' || ms < 0) return '0:00';
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  };
-
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
   const handlePlayPause = async () => {
     if (isPlaying) {
-      stopPlayback();
-    } else {
-      if (isMidiFile) {
-        // If we're at the end, restart from the beginning
-        const playFromTime = currentTime >= duration ? 0 : currentTime;
-        if (playFromTime === 0) {
-          setCurrentTime(0);
+      // Pause
+      if (isMidiFile && midiPlayerRef.current) {
+        midiPlayerRef.current.pause();
+        
+        // Release all notes
+        if (synthRef.current) {
+          synthRef.current.releaseAll();
         }
-        await playMidiFromTime(playFromTime);
+        
+        if (progressUpdateInterval.current) {
+          clearInterval(progressUpdateInterval.current);
+          progressUpdateInterval.current = null;
+        }
       } else if (audioRef.current) {
-        // Regular audio playback
+        audioRef.current.pause();
+        
+        if (progressUpdateInterval.current) {
+          clearInterval(progressUpdateInterval.current);
+          progressUpdateInterval.current = null;
+        }
+      }
+      
+      setIsPlaying(false);
+    } else {
+      // Play
+      if (isMidiFile && midiPlayerRef.current) {
+        // Ensure audio context is started
+        if (Tone.context.state !== 'running') {
+          await Tone.start();
+        }
+        
+        // Always ensure we start from the correct position
+        if (currentTime <= 0) {
+          // Starting from beginning
+          midiPlayerRef.current.skipToSeconds(0);
+          setCurrentTime(0);
+        } else if (currentTime >= duration) {
+          // At the end, restart from beginning
+          midiPlayerRef.current.skipToSeconds(0);
+          setCurrentTime(0);
+        } else {
+          // Resume from current position
+          const currentTimeSeconds = currentTime / 1000;
+          midiPlayerRef.current.skipToSeconds(currentTimeSeconds);
+        }
+        
+        midiPlayerRef.current.play();
+        setIsPlaying(true);
+        setupProgressTracking();
+      } else if (audioRef.current) {
         try {
           // If at the end, restart from beginning
           if (currentTime >= duration) {
@@ -460,17 +421,22 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
           
           await audioRef.current.play();
           setIsPlaying(true);
+          
           progressUpdateInterval.current = setInterval(() => {
             if (audioRef.current) {
               const newTime = audioRef.current.currentTime * 1000;
               if (newTime >= duration) {
-                // Audio finished - reset to beginning
-                stopPlayback(true);
+                setIsPlaying(false);
+                setCurrentTime(0);
+                if (progressUpdateInterval.current) {
+                  clearInterval(progressUpdateInterval.current);
+                  progressUpdateInterval.current = null;
+                }
               } else {
                 setCurrentTime(newTime);
               }
             }
-          }, 50);
+          }, 16);
         } catch (error) {
           console.error('Error playing audio:', error);
         }
@@ -496,83 +462,33 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
     }));
   };
 
-  // Upload file to backend and generate music (similar to Piano.jsx)
-  const sendFileToBackend = async (file, filename) => {
-    const formData = new FormData();
-    formData.append('file', file, filename);
-
-    try {
-      // 1. Upload the file
-      const uploadResponse = await fetch('http://localhost:5000/upload_midi', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error(`File upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
-      }
-
-      const uploadData = await uploadResponse.json();
-      console.log("File uploaded and saved on backend at:", uploadData.path);
-      console.log("Model parameters:", modelParams);
-
-      // 2. Call the generate endpoint
-      try {
-        const generatedBlob = await fetchGenerate(
-          uploadData.path, 
-          modelParams.temperature, 
-          modelParams.nTargetBar, 
-          modelParams.topk
-        );
-        
-        // 3. Create download link and trigger download
-        const downloadUrl = window.URL.createObjectURL(generatedBlob);
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = `generated-composition-${Date.now()}.mid`;
-        document.body.appendChild(a);
-        a.click();
-        
-        // 4. Cleanup
-        window.URL.revokeObjectURL(downloadUrl);
-        document.body.removeChild(a);
-      } catch (genError) {
-        console.error("Error in generation step:", genError);
-        alert(`Generation failed: ${genError.message}`);
-      }
-    } catch (err) {
-      console.error("Error in file processing:", err);
-      alert(`Error generating composition: ${err.message}`);
-    }
-  };
-
   const handleGenerate = async () => {
-    if (!uploadedFile || !uploadedFile.file) {
-      alert("No file available for generation.");
-      return;
-    }
-
     setIsGenerating(true);
     
     try {
-      // Create a filename with timestamp
-      const timestamp = new Date().toISOString().slice(0,19).replace(/:/g,'-');
-      const fileExtension = uploadedFile.name.split('.').pop();
-      const filename = `uploaded-${timestamp}.${fileExtension}`;
-      
-      // Send the uploaded file to backend for processing
-      await sendFileToBackend(uploadedFile.file, filename);
-      
-      // Optionally call the parent callback if you still want to navigate to results page
-      // Comment out the line below if you don't want to navigate away after generation
       await onGenerate(uploadedFile, modelParams);
-      
     } catch (error) {
       console.error('Error generating music:', error);
       alert('Failed to generate music. Please try again.');
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const formatTime = (ms) => {
+    if (typeof ms !== 'number' || ms < 0) return '0:00';
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -612,7 +528,7 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
           {loadingMidi && (
             <div className="loading-midi">
               <div className="midi-spinner"></div>
-              <p>Parsing MIDI file...</p>
+              <p>Loading MIDI file...</p>
             </div>
           )}
 
@@ -633,6 +549,11 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
                 </div>
                 
                 <div className="playback-controls">
+                  <button className="control-btn" disabled={!duration}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M6,18V6H18V18H6M6,6V18L18,12L6,6Z" />
+                    </svg>
+                  </button>
                   
                   <button 
                     className="play-pause-btn" 
@@ -648,6 +569,12 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
                         <path d="M8,5.14V19.14L19,12.14L8,5.14Z" />
                       </svg>
                     )}
+                  </button>
+                  
+                  <button className="control-btn" disabled={!duration}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M18,18V6H6V18H18M18,6V18L6,12L18,6Z" />
+                    </svg>
                   </button>
                 </div>
 
@@ -735,7 +662,7 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
         <button 
           className={`generate-button ${isGenerating ? 'generating' : ''}`}
           onClick={handleGenerate}
-          disabled={isGenerating || loadingMidi || !!midiError || !uploadedFile}
+          disabled={isGenerating || loadingMidi || !!midiError}
         >
           {isGenerating ? (
             <>
