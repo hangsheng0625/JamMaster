@@ -5,7 +5,7 @@
   min-height: 100vh;
   padding: 20px;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  gap: 140px;
+  gap: 100px;
 }
 
 /* Left Container - Empty for now */
@@ -15,6 +15,8 @@
   border-radius: 16px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
   border: 1px solid rgba(125, 21, 144, 0.1);
+  padding-right: 400px;
+  padding-bottom: 0px;
   /* This container can be used for additional content later */
 }
 
@@ -349,18 +351,19 @@
   border-color: #6a1b9a;
 }
 
-/* --- Responsive Design --- */
+/* --- Responsive Design DISABLED --- */
+/* 
 @media (max-width: 1400px) {
   .result-page-container {
-    gap: 20px; /* Keep reduced gap */
+    gap: 20px;
   }
   
   .left-container {
-    flex: 1.2; /* Slightly reduce but still wider */
+    flex: 1.2;
   }
   
   .right-container {
-    flex: 1; /* Keep smaller ratio */
+    flex: 1;
   }
 }
 
@@ -371,7 +374,7 @@
   }
   
   .left-container {
-    display: none; /* Hide left container on smaller screens */
+    display: none;
   }
   
   .right-container {
@@ -380,7 +383,7 @@
   }
   
   .result-content-card {
-    max-width: 800px; /* Set max-width for smaller screens */
+    max-width: 800px;
   }
 }
 
@@ -506,3 +509,4 @@
     font-size: 0.9rem;
   }
 }
+*/
