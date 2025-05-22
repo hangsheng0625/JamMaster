@@ -4,12 +4,12 @@ import InputMethodPage from './components/InputMethodPage';
 import Piano from './components/Piano';
 import UploadAudioPage from './components/UploadAudioPage';
 import AudioPlayPage from './components/AudioPlayPage';
-import LoadingPage from './components/LoadingPage'; // Assuming you have this
+import LoadingPage from './components/LoadingPage';
 import ResultPage from './components/ResultPage';
 
 const App = () => {
   // Page states
-  const [currentPage, setCurrentPage] = useState('inputMethod'); // 'inputMethod', 'piano', 'upload', 'audioPlay', 'loading', 'results'
+  const [currentPage, setCurrentPage] = useState('inputMethod');
   
   // Data states
   const [recordedNotes, setRecordedNotes] = useState([]);
@@ -33,7 +33,6 @@ const App = () => {
     
     // Simulate processing time and then go to results
     setTimeout(() => {
-      // In a real app, you would get the actual enhanced audio URL from your backend
       setEnhancedAudioUrl('/path/to/enhanced/audio.wav');
       setCurrentPage('results');
     }, 3000);
@@ -51,26 +50,20 @@ const App = () => {
     setCurrentPage('loading');
     
     try {
-      // Here you would call your backend API to process the uploaded file
-      // For now, we'll simulate the process
-      
       // Simulate processing time
       await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // In a real app, you would get the actual enhanced audio URL from your backend
       setEnhancedAudioUrl('/path/to/enhanced/audio.wav');
       setCurrentPage('results');
       
     } catch (error) {
       console.error('Error generating music:', error);
-      // Handle error - maybe show an error page or go back to audioPlay
       setCurrentPage('audioPlay');
     }
   };
 
   // Handle starting new enhancement
   const handleStartNew = () => {
-    // Reset all states
     setRecordedNotes([]);
     setUploadedFile(null);
     setEnhancedAudioUrl(null);
@@ -112,6 +105,7 @@ const App = () => {
         return (
           <Piano 
             onMidiSaved={handlePianoMidiSaved}
+            onBack={handleBack}
           />
         );
 
@@ -143,6 +137,7 @@ const App = () => {
             onStartNew={handleStartNew}
             enhancedAudioUrl={enhancedAudioUrl}
             originalNotes={recordedNotes} // Pass recorded notes for piano path
+            uploadedFile={uploadedFile} // Pass uploaded file for upload path
           />
         );
 

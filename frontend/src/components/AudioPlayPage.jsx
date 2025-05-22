@@ -566,11 +566,6 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
                 </div>
                 
                 <div className="playback-controls">
-                  <button className="control-btn" disabled={!duration}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M6,18V6H18V18H6M6,6V18L18,12L6,6Z" />
-                    </svg>
-                  </button>
                   
                   <button 
                     className="play-pause-btn" 
@@ -586,12 +581,6 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
                         <path d="M8,5.14V19.14L19,12.14L8,5.14Z" />
                       </svg>
                     )}
-                  </button>
-                  
-                  <button className="control-btn" disabled={!duration}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M18,18V6H6V18H18M18,6V18L6,12L18,6Z" />
-                    </svg>
                   </button>
                 </div>
 

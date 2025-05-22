@@ -24,7 +24,7 @@
 }
 
 .audio-play-card {
-  background: rgba(255, 255, 255, 0.9);
+  background: #FDF5FF;
   backdrop-filter: blur(20px);
   border-radius: 24px;
   padding: 48px;
