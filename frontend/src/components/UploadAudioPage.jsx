@@ -10,7 +10,7 @@ const UploadAudioPage = ({ onBack, onFileUploaded }) => {
   const fileInputRef = useRef(null);
 
   // Supported file types
-  const supportedTypes = ['audio/midi', 'audio/mid', 'audio/mpeg', 'audio/wav', 'audio/mp3'];
+  const supportedTypes = ['audio/midi'];
   const maxFileSize = 50 * 1024 * 1024; // 50MB in bytes
 
   const validateFile = (file) => {
@@ -24,7 +24,7 @@ const UploadAudioPage = ({ onBack, onFileUploaded }) => {
     const validExtensions = ['mid', 'midi', 'mp3', 'wav'];
     
     if (!validExtensions.includes(fileExtension) && !supportedTypes.includes(file.type)) {
-      return 'Unsupported file format. Please upload MP3, WAV, or MIDI files.';
+      return 'Unsupported file format. Please upload MIDI files.';
     }
 
     return null;
@@ -143,7 +143,7 @@ const UploadAudioPage = ({ onBack, onFileUploaded }) => {
                     Choose Audio File
                   </button>
                   <p className="drop-text">or drag and drop your file here</p>
-                  <p className="supported-formats">Supported formats: MP3, WAV, MIDI</p>
+                  <p className="supported-formats">Supported formats: MIDI</p>
                 </>
               )}
             </div>

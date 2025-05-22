@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import * as Tone from 'tone';
 import robot from '../assets/robot.png';
 import '../styles/audioPlay.css';
+import { fetchGenerate } from './api'; // Import the API function
 
 const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -495,11 +496,77 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
     }));
   };
 
+  // Upload file to backend and generate music (similar to Piano.jsx)
+  const sendFileToBackend = async (file, filename) => {
+    const formData = new FormData();
+    formData.append('file', file, filename);
+
+    try {
+      // 1. Upload the file
+      const uploadResponse = await fetch('http://localhost:5000/upload_midi', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`File upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
+      }
+
+      const uploadData = await uploadResponse.json();
+      console.log("File uploaded and saved on backend at:", uploadData.path);
+      console.log("Model parameters:", modelParams);
+
+      // 2. Call the generate endpoint
+      try {
+        const generatedBlob = await fetchGenerate(
+          uploadData.path, 
+          modelParams.temperature, 
+          modelParams.nTargetBar, 
+          modelParams.topk
+        );
+        
+        // 3. Create download link and trigger download
+        const downloadUrl = window.URL.createObjectURL(generatedBlob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `generated-composition-${Date.now()}.mid`;
+        document.body.appendChild(a);
+        a.click();
+        
+        // 4. Cleanup
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+      } catch (genError) {
+        console.error("Error in generation step:", genError);
+        alert(`Generation failed: ${genError.message}`);
+      }
+    } catch (err) {
+      console.error("Error in file processing:", err);
+      alert(`Error generating composition: ${err.message}`);
+    }
+  };
+
   const handleGenerate = async () => {
+    if (!uploadedFile || !uploadedFile.file) {
+      alert("No file available for generation.");
+      return;
+    }
+
     setIsGenerating(true);
     
     try {
+      // Create a filename with timestamp
+      const timestamp = new Date().toISOString().slice(0,19).replace(/:/g,'-');
+      const fileExtension = uploadedFile.name.split('.').pop();
+      const filename = `uploaded-${timestamp}.${fileExtension}`;
+      
+      // Send the uploaded file to backend for processing
+      await sendFileToBackend(uploadedFile.file, filename);
+      
+      // Optionally call the parent callback if you still want to navigate to results page
+      // Comment out the line below if you don't want to navigate away after generation
       await onGenerate(uploadedFile, modelParams);
+      
     } catch (error) {
       console.error('Error generating music:', error);
       alert('Failed to generate music. Please try again.');
@@ -668,7 +735,7 @@ const AudioPlayPage = ({ onBack, uploadedFile, onGenerate }) => {
         <button 
           className={`generate-button ${isGenerating ? 'generating' : ''}`}
           onClick={handleGenerate}
-          disabled={isGenerating || loadingMidi || !!midiError}
+          disabled={isGenerating || loadingMidi || !!midiError || !uploadedFile}
         >
           {isGenerating ? (
             <>
