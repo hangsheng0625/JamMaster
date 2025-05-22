@@ -28,6 +28,10 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
     const [loadingMidi, setLoadingMidi] = useState(false);
     const [midiError, setMidiError] = useState('');
 
+    // Genre breakdown state
+    const [genreBreakdown, setGenreBreakdown] = useState([]);
+    const [loadingGenres, setLoadingGenres] = useState(false);
+
     // --- Refs for Original Playback ---
     const originalSynthRef = useRef(null);
     const playbackIntervalRef = useRef(null);
@@ -221,6 +225,37 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
         return Math.max(maxTime * 1000, 1000);
     };
 
+    // Fetch genre breakdown from model
+    const fetchGenreBreakdown = async () => {
+        setLoadingGenres(true);
+        try {
+            // Replace this with your actual API call
+            // const response = await fetch('/api/analyze-genre', {
+            //     method: 'POST',
+            //     body: enhancedAudioData
+            // });
+            // const genreData = await response.json();
+            
+            // Mock data for now - replace with actual API call
+            await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API delay
+            
+            const mockGenreData = [
+                { genre: 'Pop', percentage: 45 },
+                { genre: 'Rock', percentage: 30 },
+                { genre: 'Electronic', percentage: 15 },
+                { genre: 'Classical', percentage: 10 }
+            ];
+            
+            setGenreBreakdown(mockGenreData);
+        } catch (error) {
+            console.error('Error fetching genre breakdown:', error);
+            // Set empty array on error
+            setGenreBreakdown([]);
+        } finally {
+            setLoadingGenres(false);
+        }
+    };
+
     // --- Initialize and determine input type ---
     useEffect(() => {
         originalSynthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
@@ -252,6 +287,9 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
         } else {
             setOriginalDuration(0);
         }
+
+        // Fetch genre breakdown when component mounts
+        fetchGenreBreakdown();
 
         return () => {
             stopOriginalPlayback(true);
@@ -470,98 +508,135 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
 
     return (
         <div className="result-page-container">
-            <div className="result-content-card">
-                <h2>Your Enhanced Audio</h2>
-                <div className="result-ai-assistant">
-                    <img src={robot} alt="AI Assistant" />
-                </div>
+            {/* Left Side - Empty Container */}
+            <div className="left-container">
+                {/* This can be used for additional content later */}
+            </div>
 
-                {/* --- Original Input Section --- */}
-                <h4 className="track-section-title">Original Input</h4>
-                <div className="audio-player-mock original-track">
-                    <div className="audio-details">
-                        <h3>{inputInfo.title}</h3>
-                        <p>{inputInfo.subtitle}</p>
-                        
-                        {loadingMidi && (
-                            <div className="loading-indicator">
-                                <div className="spinner"></div>
-                                <span>Parsing MIDI file...</span>
-                            </div>
-                        )}
-                        
-                        {midiError && (
-                            <div className="error-message">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M13,13H11V7H13M13,17H11V15H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z" />
-                                </svg>
-                                {midiError}
-                            </div>
-                        )}
-                        
-                        {!loadingMidi && !midiError && (
-                            <div className="player-controls">
-                                <button
-                                    className="play-pause-button original-play"
-                                    onClick={handlePlayPauseOriginal}
-                                    disabled={!hasPlayableContent}
-                                >
-                                    {isPlayingOriginal ? (
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path>
-                                        </svg>
-                                    ) : (
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M8 5v14l11-7z"></path>
-                                        </svg>
-                                    )}
-                                </button>
-                                <span className="time-current">{formatTime(originalPlaybackTime)}</span>
-                                <div className="progress-bar-container">
-                                    <div
-                                        className="progress-bar"
-                                        style={{ 
-                                            width: `${Math.min(100, originalProgress)}%`,
-                                            transition: disableTransition ? 'none' : 'width 0.3s ease-in-out'
-                                        }}
-                                    ></div>
-                                </div>
-                                <span className="time-total">{formatTime(originalDuration)}</span>
-                            </div>
-                        )}
+            {/* Right Side - Main Content */}
+            <div className="right-container">
+                <div className="result-content-card">
+                    <h2>Your Enhanced Audio</h2>
+                    <div className="result-ai-assistant">
+                        <img src={robot} alt="AI Assistant" />
                     </div>
-                </div>
-                {/* --- End Original Input Section --- */}
 
-                {/* --- Enhanced Track Section --- */}
-                <h4 className="track-section-title">Enhanced Track</h4>
-                <div className="audio-player-mock enhanced-track">
-                    <div className="audio-details">
-                        <h3>Enhanced Track</h3>
-                        <p>Generated on {new Date().toLocaleDateString()}</p>
-                        <div className="player-controls">
-                            <button className="play-pause-button enhanced-play">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M8 5v14l11-7z"></path>
-                                </svg>
-                            </button>
-                            <span className="time-current">0:00</span>
-                            <div className="progress-bar-container">
-                                <div className="progress-bar" style={{ width: '0%' }}></div>
-                            </div>
-                            <span className="time-total">3:00</span>
+                    {/* --- Original Track Section --- */}
+                    <h4 className="track-section-title">Original Track</h4>
+                    <div className="audio-player-mock original-track">
+                        <div className="audio-details">
+                            <h3>{inputInfo.title}</h3>
+                            <p>Uploaded on {new Date().toLocaleDateString()}</p>
+                            
+                            {loadingMidi && (
+                                <div className="loading-indicator">
+                                    <div className="spinner"></div>
+                                    <span>Parsing MIDI file...</span>
+                                </div>
+                            )}
+                            
+                            {midiError && (
+                                <div className="error-message">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M13,13H11V7H13M13,17H11V15H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z" />
+                                    </svg>
+                                    {midiError}
+                                </div>
+                            )}
+                            
+                            {!loadingMidi && !midiError && (
+                                <div className="player-controls">
+                                    <button
+                                        className="play-pause-button original-play"
+                                        onClick={handlePlayPauseOriginal}
+                                        disabled={!hasPlayableContent}
+                                    >
+                                        {isPlayingOriginal ? (
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path>
+                                            </svg>
+                                        ) : (
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M8 5v14l11-7z"></path>
+                                            </svg>
+                                        )}
+                                    </button>
+                                    <span className="time-current">{formatTime(originalPlaybackTime)}</span>
+                                    <div className="progress-bar-container">
+                                        <div
+                                            className="progress-bar"
+                                            style={{ 
+                                                width: `${Math.min(100, originalProgress)}%`,
+                                                transition: disableTransition ? 'none' : 'width 0.3s ease-in-out'
+                                            }}
+                                        ></div>
+                                    </div>
+                                    <span className="time-total">{formatTime(originalDuration)}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
-                </div>
-                {/* --- End Enhanced Track Section --- */}
+                    {/* --- End Original Track Section --- */}
 
-                <div className="result-actions">
-                    <button className="download-button" onClick={handleDownload}>
-                        Download Enhanced Audio
-                    </button>
-                    <button className="start-new-button" onClick={onStartNew}>
-                        Start New Enhancement
-                    </button>
+                    {/* --- Enhanced Track Section --- */}
+                    <h4 className="track-section-title">Enhanced Track</h4>
+                    <div className="audio-player-mock enhanced-track">
+                        <div className="audio-details">
+                            <h3>Enhanced Track</h3>
+                            <p>Generated on {new Date().toLocaleDateString()}</p>
+                            <div className="player-controls">
+                                <button className="play-pause-button enhanced-play">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M8 5v14l11-7z"></path>
+                                    </svg>
+                                </button>
+                                <span className="time-current">0:00</span>
+                                <div className="progress-bar-container">
+                                    <div className="progress-bar" style={{ width: '0%' }}></div>
+                                </div>
+                                <span className="time-total">3:00</span>
+                            </div>
+                        </div>
+                    </div>
+                    {/* --- End Enhanced Track Section --- */}
+
+                    {/* --- Genre Breakdown Section --- */}
+                    <h4 className="track-section-title">Genre Breakdown</h4>
+                    <div className="genre-breakdown-container">
+                        {loadingGenres ? (
+                            <div className="genre-loading">
+                                <div className="spinner"></div>
+                                <span>Analyzing music genres...</span>
+                            </div>
+                        ) : (
+                            <div className="genre-list">
+                                {genreBreakdown.map((item, index) => (
+                                    <div key={index} className="genre-item">
+                                        <div className="genre-info">
+                                            <span className="genre-name">{item.genre}</span>
+                                            <span className="genre-percentage">{item.percentage}%</span>
+                                        </div>
+                                        <div className="genre-bar-container">
+                                            <div 
+                                                className="genre-bar"
+                                                style={{ width: `${item.percentage}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    {/* --- End Genre Breakdown Section --- */}
+
+                    <div className="result-actions">
+                        <button className="download-button" onClick={handleDownload}>
+                            Download Enhanced Audio
+                        </button>
+                        <button className="start-new-button" onClick={onStartNew}>
+                            Start New Enhancement
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
