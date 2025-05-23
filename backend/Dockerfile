@@ -25,7 +25,7 @@ COPY Requirements.txt /app/
 
 # Upgrade pip and install Python dependencies from requirements.txt
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt --verbose
+    pip install --no-cache-dir -r Requirements.txt --verbose
 
 # Copy everything else from the current directory (backend) to /app
 COPY . /app
