@@ -509,9 +509,7 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
     return (
         <div className="result-page-container">
             {/* Left Side - Empty Container */}
-            <div className="left-container">
-                {/* This can be used for additional content later */}
-            </div>
+
 
             {/* Right Side - Main Content */}
             <div className="right-container">
@@ -601,32 +599,7 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
                     {/* --- End Enhanced Track Section --- */}
 
                     {/* --- Genre Breakdown Section --- */}
-                    <h4 className="track-section-title">Genre Breakdown</h4>
-                    <div className="genre-breakdown-container">
-                        {loadingGenres ? (
-                            <div className="genre-loading">
-                                <div className="spinner"></div>
-                                <span>Analyzing music genres...</span>
-                            </div>
-                        ) : (
-                            <div className="genre-list">
-                                {genreBreakdown.map((item, index) => (
-                                    <div key={index} className="genre-item">
-                                        <div className="genre-info">
-                                            <span className="genre-name">{item.genre}</span>
-                                            <span className="genre-percentage">{item.percentage}%</span>
-                                        </div>
-                                        <div className="genre-bar-container">
-                                            <div 
-                                                className="genre-bar"
-                                                style={{ width: `${item.percentage}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    
                     {/* --- End Genre Breakdown Section --- */}
 
                     <div className="result-actions">
