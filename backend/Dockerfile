@@ -21,7 +21,7 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements.txt first (for better Docker layer caching)
-COPY requirements.txt /app/
+COPY Requirements.txt /app/
 
 # Upgrade pip and install Python dependencies from requirements.txt
 RUN pip install --upgrade pip && \
