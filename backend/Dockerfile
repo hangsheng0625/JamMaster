@@ -1,16 +1,18 @@
-# Use TensorFlow 1.14 with GPU support as base image
-FROM tensorflow/tensorflow:1.14.0-gpu-py3
+# Use TensorFlow 1.14 with CPU support as base image (GPU not supported on Cloud Run)
+FROM tensorflow/tensorflow:1.14.0-py3
 
 # Set working directory
 WORKDIR /app
 
-# Fix NVIDIA repository key issue
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
-
-# Install system dependencies
+# Install Google Cloud SDK and other dependencies
 RUN apt-get update && apt-get install -y \
     libsndfile1 \
     ffmpeg \
+    curl \
+    gnupg \
+    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list \
+    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - \
+    && apt-get update && apt-get install -y google-cloud-cli \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy everything from the current directory (backend) to /app
@@ -20,11 +22,15 @@ COPY . /app
 RUN pip install --no-cache-dir Flask==2.0.3 Flask-API==3.1 Flask-Cors==5.0.0 \
     miditoolkit==1.0.0 numpy==1.19.5 scipy==1.5.4
 
+# Create model directory
+RUN mkdir -p /app/remi
+
 # Set environment variables
 ENV PYTHONPATH=/app
+ENV MODEL_BUCKET_NAME=jammaster-models-160279
 
-# Expose the port (Cloud Run will set PORT env var)
+# Expose the port
 EXPOSE 8080
 
-# Command to run the backend - use PORT env var
+# Command to run the backend
 CMD ["python", "app.py"]
