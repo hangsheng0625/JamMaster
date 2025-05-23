@@ -23,8 +23,8 @@ RUN pip install --no-cache-dir Flask==2.0.3 Flask-API==3.1 Flask-Cors==5.0.0 \
 # Set environment variables
 ENV PYTHONPATH=/app
 
-# Expose the port your backend API runs on
-EXPOSE 5000
+# Expose the port (Cloud Run will set PORT env var)
+EXPOSE 8080
 
-# Command to run the backend
+# Command to run the backend - use PORT env var
 CMD ["python", "app.py"]
