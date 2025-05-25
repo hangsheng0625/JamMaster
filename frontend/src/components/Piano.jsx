@@ -608,7 +608,7 @@ const Piano = ({ onMidiSaved, onBack }) => {
 
     try {
       // 1. Upload the MIDI file
-      const uploadResponse = await fetch('https://jammaster-backend-567737315998.asia-southeast1.run.app/upload_midi', {
+      const uploadResponse = await fetch('127.0.0.1:5000/upload_midi', {
         method: 'POST',
         body: formData
       });
@@ -621,11 +621,15 @@ const Piano = ({ onMidiSaved, onBack }) => {
       console.log("MIDI uploaded and saved on backend at:", uploadData.path);
       console.log("Model parameters:", modelParams);
 
+      const sanitizeData = await fetchSanitizeAudio(uploadData.path);
+      console.log(sanitizeData)
+      console.log("Sanitized and saved on backend at:", sanitizeData.path);
+
       // 2. Call the generate endpoint - note that fetchGenerate already returns a blob
       try {
         // This directly returns a blob according to your implementation
         const generatedBlob = await fetchGenerate(
-          uploadData.path, 
+          sanitizeData.path, 
           modelParams.temperature, 
           modelParams.nTargetBar, 
           modelParams.topk

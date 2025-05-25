@@ -72,11 +72,26 @@ def model_status():
 
 @app.route('/sanitize_audio', methods=["POST"])
 def sanitize():
-    data = request.get_json()
+    # Handle both JSON and file upload
+    if request.files:
+        file = request.files['file']
+        if file.filename == '':
+            return {'error': 'No selected file'}, 400
+        
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(dir=get_temp_dir(), suffix='.mid', delete=False) as temp_in:
+            file.save(temp_in.name)
+            inpath = temp_in.name
+    else:
+        data = request.get_json()
+        inpath = data.get("inpath")
+        if inpath:
+            inpath = os.path.normpath(inpath)
 
-    inpath = data.get("inpath")
-    outpath = data.get("outpath")
-    
+    # Create output temp file
+    with tempfile.NamedTemporaryFile(dir=get_temp_dir(), suffix='.mid', delete=False) as temp_out:
+        outpath = temp_out.name
+        
     # Use temp files if paths aren't provided
     if not inpath or not outpath:
         with tempfile.NamedTemporaryFile(dir=get_temp_dir(), suffix='.mid', delete=False) as infile, \
@@ -85,7 +100,7 @@ def sanitize():
             return {'message': 'Audio processed with temp files'}, 200
     else:
         process_midi_file(inpath, outpath)
-        return {'message': 'Audio processed with provided paths'}, 200
+        return {'message': 'Audio processed with provided paths', 'path': outpath}, 200
 
 @app.route('/generate', methods=['POST'])
 def generate():

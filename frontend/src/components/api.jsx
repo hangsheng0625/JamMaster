@@ -1,4 +1,4 @@
-// const apiUrl = process.env.REACT_APP_API_URL;
+// const apiUrl = "http://192.168.0.106:5000";
 const apiUrl = "https://jammaster-backend-567737315998.asia-southeast1.run.app";
 
 // 1. GET /hello
