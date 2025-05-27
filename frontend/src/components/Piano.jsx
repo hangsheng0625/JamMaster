@@ -608,7 +608,7 @@ const Piano = ({ onMidiSaved, onBack }) => {
 
     try {
       // 1. Upload the MIDI file
-      const uploadResponse = await fetch('https://jammaster-backend-567737315998.asia-southeast1.run.app', {
+      const uploadResponse = await fetch('https://jammaster-backend-567737315998.asia-southeast1.run.app/upload_midi', {
         method: 'POST',
         body: formData
       });
