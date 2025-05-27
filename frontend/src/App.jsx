@@ -27,15 +27,10 @@ const App = () => {
   };
 
   // Handle piano MIDI generation
-  const handlePianoMidiSaved = (notes) => {
+  const handlePianoMidiSaved = (notes, url) => {
     setRecordedNotes(notes);
-    setCurrentPage('loading');
-    
-    // Simulate processing time and then go to results
-    setTimeout(() => {
-      setEnhancedAudioUrl('/path/to/enhanced/audio.wav');
-      setCurrentPage('results');
-    }, 3000);
+    setEnhancedAudioUrl(url);
+    setCurrentPage('results');
   };
 
   // Handle file upload
@@ -73,6 +68,7 @@ const App = () => {
 
   // Handle back navigation
   const handleBack = () => {
+    console.log("page currently swapping to:", currentPage)
     switch (currentPage) {
       case 'upload':
         setCurrentPage('inputMethod');

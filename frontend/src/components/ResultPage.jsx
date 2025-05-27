@@ -22,11 +22,22 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
     const [originalDuration, setOriginalDuration] = useState(0);
     const [disableTransition, setDisableTransition] = useState(false);
     
+    // --- State for Enhanced Playback ---
+    const [isPlayingEnhanced, setIsPlayingEnhanced] = useState(false);
+    const [enhancedPlaybackTime, setEnhancedPlaybackTime] = useState(0);
+    const [enhancedDuration, setEnhancedDuration] = useState(0);
+    const [disableEnhancedTransition, setDisableEnhancedTransition] = useState(false);
+    
     // MIDI file specific states
     const [isMidiFile, setIsMidiFile] = useState(false);
     const [midiData, setMidiData] = useState(null);
     const [loadingMidi, setLoadingMidi] = useState(false);
     const [midiError, setMidiError] = useState('');
+
+    // Enhanced MIDI specific states
+    const [enhancedMidiData, setEnhancedMidiData] = useState(null);
+    const [loadingEnhancedMidi, setLoadingEnhancedMidi] = useState(false);
+    const [enhancedMidiError, setEnhancedMidiError] = useState('');
 
     // Genre breakdown state
     const [genreBreakdown, setGenreBreakdown] = useState([]);
@@ -38,6 +49,13 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
     const scheduledEventsRef = useRef([]);
     const pausedAtTimeRef = useRef(0);
     const startTimeRef = useRef(0);
+
+    // --- Refs for Enhanced Playback ---
+    const enhancedSynthRef = useRef(null);
+    const enhancedPlaybackIntervalRef = useRef(null);
+    const enhancedScheduledEventsRef = useRef([]);
+    const enhancedPausedAtTimeRef = useRef(0);
+    const enhancedStartTimeRef = useRef(0);
 
     // MIDI parsing functions (copied from AudioPlayPage)
     const parseMidiFile = async (file) => {
@@ -65,6 +83,47 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
         }
     };
 
+    // Enhanced MIDI parsing function - FIXED VERSION
+    const parseEnhancedMidiFile = async (url) => {
+        try {
+            setLoadingEnhancedMidi(true);
+            setEnhancedMidiError('');
+            
+            console.log('Parsing enhanced MIDI from URL:', url);
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch enhanced MIDI: ${response.status} ${response.statusText}`);
+            }
+            
+            const arrayBuffer = await response.arrayBuffer();
+            console.log('Enhanced MIDI ArrayBuffer size:', arrayBuffer.byteLength);
+            
+            if (arrayBuffer.byteLength === 0) {
+                throw new Error('Enhanced MIDI file is empty');
+            }
+            
+            const midiData = parseMIDI(arrayBuffer);
+            
+            if (midiData && midiData.tracks && midiData.tracks.length > 0) {
+                console.log('Enhanced MIDI parsed successfully:', midiData);
+                setEnhancedMidiData(midiData);
+                const totalDuration = calculateMidiDuration(midiData);
+                setEnhancedDuration(totalDuration);
+                console.log('Enhanced MIDI duration:', totalDuration);
+                return true;
+            } else {
+                throw new Error('Invalid enhanced MIDI file format');
+            }
+        } catch (error) {
+            console.error('Error parsing enhanced MIDI file:', error);
+            setEnhancedMidiError(`Failed to parse enhanced MIDI file: ${error.message}`);
+            return false;
+        } finally {
+            setLoadingEnhancedMidi(false);
+        }
+    };
+
     const parseMIDI = (arrayBuffer) => {
         const view = new DataView(arrayBuffer);
         let offset = 0;
@@ -88,14 +147,22 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
         const tracks = [];
         
         for (let i = 0; i < trackCount; i++) {
+            if (offset + 8 > arrayBuffer.byteLength) break;
+            
             const trackChunk = String.fromCharCode(...new Uint8Array(arrayBuffer, offset, 4));
             if (trackChunk !== 'MTrk') {
+                console.warn(`Expected MTrk, got ${trackChunk} at track ${i}`);
                 break;
             }
             offset += 4;
             
             const trackLength = view.getUint32(offset);
             offset += 4;
+            
+            if (offset + trackLength > arrayBuffer.byteLength) {
+                console.warn(`Track ${i} extends beyond file bounds`);
+                break;
+            }
             
             const trackData = new Uint8Array(arrayBuffer, offset, trackLength);
             const events = parseTrackEvents(trackData, division);
@@ -117,12 +184,14 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
         let offset = 0;
         let currentTime = 0;
         let runningStatus = 0;
-        let tempo = 500000;
+        let tempo = 500000; // Default tempo (120 BPM)
         
         while (offset < trackData.length) {
+            // Parse variable-length delta time
             let deltaTime = 0;
             let byte;
             do {
+                if (offset >= trackData.length) break;
                 byte = trackData[offset++];
                 deltaTime = (deltaTime << 7) | (byte & 0x7F);
             } while (byte & 0x80);
@@ -133,6 +202,7 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
             
             let status = trackData[offset];
             
+            // Handle running status
             if (status < 0x80) {
                 status = runningStatus;
             } else {
@@ -143,6 +213,7 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
             const eventType = status & 0xF0;
             const channel = status & 0x0F;
             
+            // Handle note events
             if (eventType === 0x90 || eventType === 0x80) {
                 if (offset + 1 >= trackData.length) break;
                 
@@ -160,30 +231,42 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
                     velocity: velocity,
                     channel: channel
                 });
-            } else if (eventType === 0xFF) {
+            } 
+            // Handle meta events
+            else if (status === 0xFF) {
                 if (offset >= trackData.length) break;
                 const metaType = trackData[offset++];
                 
+                // Parse meta event length
                 let metaLength = 0;
                 do {
+                    if (offset >= trackData.length) break;
                     byte = trackData[offset++];
                     metaLength = (metaLength << 7) | (byte & 0x7F);
                 } while (byte & 0x80);
                 
-                if (metaType === 0x51 && metaLength === 3) {
+                // Handle tempo change
+                if (metaType === 0x51 && metaLength === 3 && offset + 2 < trackData.length) {
                     tempo = (trackData[offset] << 16) | (trackData[offset + 1] << 8) | trackData[offset + 2];
                 }
                 
                 offset += metaLength;
                 
+                // End of track
                 if (metaType === 0x2F) {
                     break;
                 }
-            } else {
+            } 
+            // Handle other channel events
+            else {
+                // Program change and channel pressure (1 data byte)
                 if (eventType === 0xC0 || eventType === 0xD0) {
-                    offset++;
-                } else {
-                    offset += 2;
+                    if (offset < trackData.length) offset++;
+                } 
+                // Other channel events (2 data bytes)
+                else {
+                    if (offset + 1 < trackData.length) offset += 2;
+                    else break;
                 }
             }
         }
@@ -213,6 +296,7 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
             });
         });
         
+        // Normalize times to start from 0
         if (minTime > 0 && minTime !== Infinity) {
             midiData.tracks.forEach(track => {
                 track.events.forEach(event => {
@@ -222,7 +306,7 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
             maxTime = maxTime - minTime;
         }
         
-        return Math.max(maxTime * 1000, 1000);
+        return Math.max(maxTime * 1000, 1000); // Convert to milliseconds, minimum 1 second
     };
 
     // Fetch genre breakdown from model
@@ -259,6 +343,7 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
     // --- Initialize and determine input type ---
     useEffect(() => {
         originalSynthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
+        enhancedSynthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
 
         // Determine if we're dealing with uploaded MIDI file or piano recording
         if (uploadedFile) {
@@ -288,31 +373,54 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
             setOriginalDuration(0);
         }
 
+        // Parse enhanced MIDI file if available
+        if (enhancedAudioUrl) {
+            console.log('Enhanced audio URL provided:', enhancedAudioUrl);
+            parseEnhancedMidiFile(enhancedAudioUrl);
+        } else {
+            console.log('No enhanced audio URL provided');
+        }
+
         // Fetch genre breakdown when component mounts
         fetchGenreBreakdown();
 
         return () => {
             stopOriginalPlayback(true);
+            stopEnhancedPlayback(true);
             
             if (originalSynthRef.current) {
                 originalSynthRef.current.releaseAll();
                 originalSynthRef.current.dispose();
                 originalSynthRef.current = null;
             }
+
+            if (enhancedSynthRef.current) {
+                enhancedSynthRef.current.releaseAll();
+                enhancedSynthRef.current.dispose();
+                enhancedSynthRef.current = null;
+            }
             
             if (playbackIntervalRef.current) {
                 clearInterval(playbackIntervalRef.current);
                 playbackIntervalRef.current = null;
             }
+
+            if (enhancedPlaybackIntervalRef.current) {
+                clearInterval(enhancedPlaybackIntervalRef.current);
+                enhancedPlaybackIntervalRef.current = null;
+            }
             
             scheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
             scheduledEventsRef.current = [];
+
+            enhancedScheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
+            enhancedScheduledEventsRef.current = [];
             
             Tone.Transport.cancel();
             Tone.Transport.stop();
             Tone.Transport.position = 0;
         };
-    }, [originalNotes, uploadedFile]);
+    }, [originalNotes, uploadedFile, enhancedAudioUrl]);
 
     // --- Audio Context Starter ---
     const startAudio = async () => {
@@ -335,6 +443,8 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
         setOriginalPlaybackTime(0);
         let startPosition = 0;
 
+        // Stop any other playback first
+        stopEnhancedPlayback(true);
         stopOriginalPlayback(true);
         
         Tone.Transport.cancel();
@@ -420,6 +530,95 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
         scheduledEventsRef.current.push(stopEventId);
     };
 
+    // --- Play Enhanced Recording Logic - FIXED VERSION ---
+    const playEnhancedRecording = async () => {
+        if (isPlayingEnhanced || !enhancedSynthRef.current || !enhancedMidiData) {
+            console.log('Cannot play enhanced:', {
+                isPlayingEnhanced,
+                hasSynth: !!enhancedSynthRef.current,
+                hasMidiData: !!enhancedMidiData
+            });
+            return;
+        }
+
+        console.log('Starting enhanced playback with data:', enhancedMidiData);
+
+        await startAudio();
+
+        setEnhancedPlaybackTime(0);
+        let startPosition = 0;
+
+        // Stop any other playback first
+        stopOriginalPlayback(true);
+        stopEnhancedPlayback(true);
+        
+        Tone.Transport.cancel();
+        Tone.Transport.stop();
+        Tone.Transport.position = 0;
+        
+        if (enhancedSynthRef.current) {
+            enhancedSynthRef.current.releaseAll();
+            enhancedSynthRef.current.dispose();
+            enhancedSynthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
+        }
+        
+        Tone.Transport.start();
+        
+        setIsPlayingEnhanced(true);
+        enhancedScheduledEventsRef.current = [];
+        enhancedStartTimeRef.current = Date.now() - startPosition;
+
+        // Schedule Enhanced MIDI events
+        let scheduledEventCount = 0;
+        enhancedMidiData.tracks.forEach((track, trackIndex) => {
+            console.log(`Track ${trackIndex} has ${track.events.length} events`);
+            track.events.forEach((event, eventIndex) => {
+                const eventTimeMs = event.time * 1000;
+                
+                if (eventTimeMs >= startPosition) {
+                    const adjustedTime = (eventTimeMs - startPosition) / 1000;
+                    
+                    if (event.type === 'noteOn') {
+                        const eventId = Tone.Transport.scheduleOnce((time) => {
+                            console.log(`Playing note: ${event.note} at time ${time}`);
+                            enhancedSynthRef.current?.triggerAttack(event.note, time, event.velocity / 127);
+                        }, adjustedTime);
+                        enhancedScheduledEventsRef.current.push(eventId);
+                        scheduledEventCount++;
+                        
+                    } else if (event.type === 'noteOff') {
+                        const eventId = Tone.Transport.scheduleOnce((time) => {
+                            enhancedSynthRef.current?.triggerRelease(event.note, time);
+                        }, adjustedTime);
+                        enhancedScheduledEventsRef.current.push(eventId);
+                        scheduledEventCount++;
+                    }
+                }
+            });
+        });
+
+        console.log(`Scheduled ${scheduledEventCount} enhanced events`);
+
+        // Update progress bar
+        enhancedPlaybackIntervalRef.current = setInterval(() => {
+            const elapsed = Date.now() - enhancedStartTimeRef.current;
+            
+            if (elapsed >= enhancedDuration) {
+                setEnhancedPlaybackTime(enhancedDuration);
+                stopEnhancedPlayback(false, true);
+            } else {
+                setEnhancedPlaybackTime(elapsed);
+            }
+        }, 50);
+
+        // Schedule stop at the end
+        const remainingDuration = (enhancedDuration - startPosition) / 1000;
+        const stopEventId = Tone.Transport.scheduleOnce(() => {
+            stopEnhancedPlayback(false, true); 
+        }, remainingDuration);
+        enhancedScheduledEventsRef.current.push(stopEventId);
+    };
+
     // --- Stop Original Recording Logic ---
     const stopOriginalPlayback = (cancelEvents = true, playbackCompleted = false) => {
         setIsPlayingOriginal(false);
@@ -443,11 +642,44 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
                 originalSynthRef.current.releaseAll();
             }
             
-            Tone.Transport.cancel();
+            // Don't cancel Transport here if enhanced is playing
+            if (!isPlayingEnhanced) {
+                Tone.Transport.cancel();
+            }
         }
     };
 
-    // --- Button Handler ---
+    // --- Stop Enhanced Recording Logic ---
+    const stopEnhancedPlayback = (cancelEvents = true, playbackCompleted = false) => {
+        setIsPlayingEnhanced(false);
+        
+        enhancedPausedAtTimeRef.current = enhancedPlaybackTime;
+        
+        if (enhancedPlaybackIntervalRef.current) {
+            clearInterval(enhancedPlaybackIntervalRef.current);
+            enhancedPlaybackIntervalRef.current = null;
+        }
+
+        if (playbackCompleted) {
+            setEnhancedPlaybackTime(enhancedDuration);
+        }
+        
+        if (cancelEvents) {
+            enhancedScheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
+            enhancedScheduledEventsRef.current = [];
+
+            if (enhancedSynthRef.current) {
+                enhancedSynthRef.current.releaseAll();
+            }
+            
+            // Don't cancel Transport here if original is playing
+            if (!isPlayingOriginal) {
+                Tone.Transport.cancel();
+            }
+        }
+    };
+
+    // --- Button Handlers ---
     const handlePlayPauseOriginal = () => {
         if (isPlayingOriginal) {
             stopOriginalPlayback(true, false);
@@ -464,12 +696,29 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
         }
     };
 
+    const handlePlayPauseEnhanced = () => {
+        console.log('Enhanced play/pause clicked, current state:', isPlayingEnhanced);
+        if (isPlayingEnhanced) {
+            stopEnhancedPlayback(true, false);
+        } else {
+            setDisableEnhancedTransition(true);
+            setEnhancedPlaybackTime(0);
+            
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setDisableEnhancedTransition(false);
+                    playEnhancedRecording();
+                });
+            });
+        }
+    };
+
     // --- Download Handlers ---
     const handleDownload = () => {
         if (enhancedAudioUrl) {
             const link = document.createElement('a');
             link.href = enhancedAudioUrl;
-            link.download = 'enhanced-audio.wav';
+            link.download = 'enhanced-audio.mid';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -485,6 +734,7 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
 
     // --- Calculate Progress ---
     const originalProgress = originalDuration > 0 ? (originalPlaybackTime / originalDuration) * 100 : 0;
+    const enhancedProgress = enhancedDuration > 0 ? (enhancedPlaybackTime / enhancedDuration) * 100 : 0;
 
     // Determine what to show in the original input section
     const getOriginalInputInfo = () => {
@@ -505,11 +755,21 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
 
     const inputInfo = getOriginalInputInfo();
     const hasPlayableContent = (isMidiFile && midiData && !midiError) || (!isMidiFile && originalNotes && originalNotes.length > 0);
+    const hasEnhancedPlayableContent = enhancedMidiData && !enhancedMidiError;
+
+    // Debug info
+    console.log('Component state:', {
+        enhancedAudioUrl,
+        hasEnhancedPlayableContent,
+        enhancedMidiData: !!enhancedMidiData,
+        enhancedMidiError,
+        loadingEnhancedMidi,
+        enhancedDuration
+    });
 
     return (
         <div className="result-page-container">
             {/* Left Side - Empty Container */}
-
 
             {/* Right Side - Main Content */}
             <div className="right-container">
@@ -582,18 +842,53 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
                         <div className="audio-details">
                             <h3>Enhanced Track</h3>
                             <p>Generated on {new Date().toLocaleDateString()}</p>
-                            <div className="player-controls">
-                                <button className="play-pause-button enhanced-play">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M8 5v14l11-7z"></path>
-                                    </svg>
-                                </button>
-                                <span className="time-current">0:00</span>
-                                <div className="progress-bar-container">
-                                    <div className="progress-bar" style={{ width: '0%' }}></div>
+                            
+                            {loadingEnhancedMidi && (
+                                <div className="loading-indicator">
+                                    <div className="spinner"></div>
+                                    <span>Loading enhanced MIDI...</span>
                                 </div>
-                                <span className="time-total">3:00</span>
-                            </div>
+                            )}
+                            
+                            {enhancedMidiError && (
+                                <div className="error-message">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M13,13H11V7H13M13,17H11V15H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z" />
+                                    </svg>
+                                    {enhancedMidiError}
+                                </div>
+                            )}
+                            
+                            {!loadingEnhancedMidi && !enhancedMidiError && (
+                                <div className="player-controls">
+                                    <button
+                                        className="play-pause-button enhanced-play"
+                                        onClick={handlePlayPauseEnhanced}
+                                        disabled={!hasEnhancedPlayableContent}
+                                    >
+                                        {isPlayingEnhanced ? (
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path>
+                                            </svg>
+                                        ) : (
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M8 5v14l11-7z"></path>
+                                            </svg>
+                                        )}
+                                    </button>
+                                    <span className="time-current">{formatTime(enhancedPlaybackTime)}</span>
+                                    <div className="progress-bar-container">
+                                        <div
+                                            className="progress-bar"
+                                            style={{ 
+                                                width: `${Math.min(100, enhancedProgress)}%`,
+                                                transition: disableEnhancedTransition ? 'none' : 'width 0.3s ease-in-out'
+                                            }}
+                                        ></div>
+                                    </div>
+                                    <span className="time-total">{formatTime(enhancedDuration)}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                     {/* --- End Enhanced Track Section --- */}

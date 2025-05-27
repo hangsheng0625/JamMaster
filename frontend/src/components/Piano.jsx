@@ -1,11 +1,13 @@
 // src/components/Piano.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import * as Tone from 'tone';
+import LoadingPage from './LoadingPage';
 import robot from "../assets/robot.png"
 import recording from "../assets/recording_icon.png"
 import stopRecording from "../assets/stop-recording.png"
 import "../styles/piano.css"
 import { fetchSanitizeAudio, fetchGenerate } from './api';
+import Swal from 'sweetalert2';
 
 // Complete MIDI file generation with all necessary helper functions
 /**
@@ -324,12 +326,14 @@ const createSimpleMidiFile = (recordedNotes) => {
 
 // Piano component
 const Piano = ({ onMidiSaved, onBack }) => {
+  const [isGenerating, setIsGenerating] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [recordedNotes, setRecordedNotes] = useState([]);
   const [startTime, setStartTime] = useState(null);
   const [activeKeys, setActiveKeys] = useState({});
   const [showInfo, setShowInfo] = useState(false);
+  const [downloadUrl, setDownloadUrl] = useState(null);
 
   const [modelParams, setModelParams] = useState({
     nTargetBar: 8,
@@ -621,34 +625,65 @@ const Piano = ({ onMidiSaved, onBack }) => {
       console.log("MIDI uploaded and saved on backend at:", uploadData.path);
       console.log("Model parameters:", modelParams);
 
-      const sanitizeData = await fetchSanitizeAudio(uploadData.path);
-      console.log(sanitizeData)
-      console.log("Sanitized and saved on backend at:", sanitizeData.path);
+      // Kind of Broken right now (it needs to be fixed)
+      // const sanitizeData = await fetchSanitizeAudio(uploadData.path);
+      // console.log(sanitizeData)
+      // console.log("Sanitized and saved on backend at:", sanitizeData.path);
 
-      // 2. Call the generate endpoint - note that fetchGenerate already returns a blob
+      Swal.fire({
+        title: 'Generating...',
+        allowEscapeKey: false,
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      })
+        // 2. Call the generate endpoint - note that fetchGenerate already returns a blob
       try {
-        // This directly returns a blob according to your implementation
+          // This directly returns a blob according to your implementation
+        setIsGenerating(true)
         const generatedBlob = await fetchGenerate(
-          sanitizeData.path, 
-          modelParams.temperature, 
-          modelParams.nTargetBar, 
+          uploadData.path,
+          modelParams.temperature,
+          modelParams.nTargetBar,
           modelParams.topk
         );
-        
+        console.log('Generated blob:', generatedBlob);
+
+        Swal.close(); // Close the loading alert
         // No need to call .blob() again - it's already a blob
         
-        // 3. Create download link and trigger download
-        const downloadUrl = window.URL.createObjectURL(generatedBlob);
+        const url = window.URL.createObjectURL(generatedBlob);
+        setDownloadUrl(url);
+        setIsGenerating(false);
+
         const a = document.createElement('a');
-        a.href = downloadUrl;
+        a.href = url; // Use the local url variable
         a.download = `generated-composition-${Date.now()}.mid`;
         document.body.appendChild(a);
         a.click();
-        
-        // 4. Cleanup
-        window.URL.revokeObjectURL(downloadUrl);
-        document.body.removeChild(a);
+
+        // Cleanup
+        console.log("Erroring on cleanup")
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        }, 100);
+
+        console.log("Calling onMidiSaved callback")
+        if (onMidiSaved) {
+          // Pass the recorded notes that were filtered in saveMidiRecording
+          const validRecordedNotes = recordedNotes.filter(note => note.duration > 0 && note.timestamp >= 0);
+          onMidiSaved(validRecordedNotes, url); // Use the local url variable and valid notes
+        }
       } catch (genError) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Oops...',
+            text: 'Something went wrong!',
+          });
+          console.error('Fetch error:', error);
         console.error("Error in generation step:", genError);
         alert(`Generation failed: ${genError.message}`);
       }
@@ -659,7 +694,7 @@ const Piano = ({ onMidiSaved, onBack }) => {
   };
 
   // Save the MIDI recording
-  const saveMidiRecording = () => {
+  const saveMidiRecording = async () => {
     // Filter out invalid notes before saving
     const validNotes = recordedNotes.filter(note => note.duration > 0 && note.timestamp >= 0);
 
@@ -670,10 +705,6 @@ const Piano = ({ onMidiSaved, onBack }) => {
 
     console.log(`Saving MIDI file with ${validNotes.length} notes`);
 
-    // Trigger page change if callback provided
-    if (onMidiSaved) {
-      onMidiSaved(validNotes);
-    }
     
     // Generate MIDI data
     const midiData = createSimpleMidiFile(validNotes);
@@ -760,149 +791,151 @@ const Piano = ({ onMidiSaved, onBack }) => {
 
   return (
     <div className="virtual-piano-container">
-      <button className="back-button" onClick={onBack}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z" />
-        </svg>
-        Back
-      </button>
+      <div>
+        <button className="back-button" onClick={onBack}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z" />
+          </svg>
+          Back
+        </button>
 
-      <div className="header">
-        <h1>Virtual Piano Studio</h1>
-        <p>Play, record, and let AI enhance your music</p>
-      </div>
-
-      <div className="ai-assistant">
-        <img src={robot} alt="AI Assistant" />
-      </div>
-
-      <button
-        className={`recording-button ${isRecording ? 'recording' : ''}`}
-        onClick={toggleRecording}
-      >
-        <img src={isRecording ? stopRecording : recording} alt={isRecording ? "Stop icon" : "Record icon"} />
-        {isRecording ? 'Stop Recording' : 'Start Recording'}
-      </button>
-
-      {/* New layout structure with left and right columns */}
-      <div className="piano-content-wrapper">
-        {/* Left column for parameter controls */}
-        <div className="left-column">
-          {/* Parameter Controls Section */}
-          <div className="parameter-controls-section">
-            <div className="parameter-header">
-              <h3>AI Generation Settings</h3>
-              <button 
-                className="info-button" 
-                onClick={() => setShowInfo(!showInfo)}
-              >
-                {showInfo ? 'Hide Info' : 'Show Info'}
-              </button>
-            </div>
-            
-            {showInfo && (
-              <div className="parameter-info">
-                <p>Adjust these parameters to control how the AI completes your composition:</p>
-                <ul>
-                  <li><strong>Bars to Generate:</strong> Number of musical bars the AI will create (longer compositions = more bars)</li>
-                  <li><strong>Temperature:</strong> Controls randomness (higher = more creative but less predictable)</li>
-                  <li><strong>Top-K:</strong> Limits options AI considers (lower = more focused on most likely notes)</li>
-                </ul>
-              </div>
-            )}
-            
-            <div className="slider-container">
-              {renderParameterSlider(
-                'nTargetBar',
-                'Bars to Generate',
-                1,
-                16,
-                1,
-                'Number of musical bars the AI will generate'
-              )}
-              
-              {renderParameterSlider(
-                'temperature',
-                'Temperature',
-                0.1,
-                1.5,
-                0.1,
-                'Controls randomness in generated music (higher = more diverse)'
-              )}
-              
-              {renderParameterSlider(
-                'topk',
-                'Top-K',
-                1,
-                50,
-                1,
-                'How many options the AI considers at each step (lower = more focused)'
-              )}
-            </div>
-          </div>
+        <div className="header">
+          <h1>Virtual Piano Studio</h1>
+          <p>Play, record, and let AI enhance your music</p>
         </div>
 
-        {/* Right column for piano and recording controls */}
-        <div className="right-column">
-          <div className="piano-container">
-            {/* White keys */}
-            <div className="white-keys">
-              {renderPianoKey('Q', 'C4')}
-              {renderPianoKey('W', 'D4')}
-              {renderPianoKey('E', 'E4')}
-              {renderPianoKey('R', 'F4')}
-              {renderPianoKey('T', 'G4')}
-              {renderPianoKey('Y', 'A4')}
-              {renderPianoKey('U', 'B4')}
-              {renderPianoKey('I', 'C5')}
-              {renderPianoKey('O', 'D5')}
-              {renderPianoKey('P', 'E5')}
-              {renderPianoKey('Z', 'F5')}
-              {renderPianoKey('X', 'G5')}
-              {renderPianoKey('C', 'A5')}
-              {renderPianoKey('V', 'B5')}
-            </div>
+        <div className="ai-assistant">
+          <img src={robot} alt="AI Assistant" />
+        </div>
 
-            {/* Black keys */}
-            <div className="black-keys">
-              {renderPianoKey('2', 'C#4', true)}
-              {renderPianoKey('3', 'D#4', true)}
-              {renderPianoKey('5', 'F#4', true)}
-              {renderPianoKey('6', 'G#4', true)}
-              {renderPianoKey('7', 'A#4', true)}
-              {renderPianoKey('9', 'C#5', true)}
-              {renderPianoKey('0', 'D#5', true)}
-              {renderPianoKey('S', 'F#5', true)}
-              {renderPianoKey('D', 'G#5', true)}
-              {renderPianoKey('F', 'A#5', true)}
+        <button
+          className={`recording-button ${isRecording ? 'recording' : ''}`}
+          onClick={toggleRecording}
+        >
+          <img src={isRecording ? stopRecording : recording} alt={isRecording ? "Stop icon" : "Record icon"} />
+          {isRecording ? 'Stop Recording' : 'Start Recording'}
+        </button>
+
+        {/* New layout structure with left and right columns */}
+        <div className="piano-content-wrapper">
+          {/* Left column for parameter controls */}
+          <div className="left-column">
+            {/* Parameter Controls Section */}
+            <div className="parameter-controls-section">
+              <div className="parameter-header">
+                <h3>AI Generation Settings</h3>
+                <button 
+                  className="info-button" 
+                  onClick={() => setShowInfo(!showInfo)}
+                >
+                  {showInfo ? 'Hide Info' : 'Show Info'}
+                </button>
+              </div>
+              
+              {showInfo && (
+                <div className="parameter-info">
+                  <p>Adjust these parameters to control how the AI completes your composition:</p>
+                  <ul>
+                    <li><strong>Bars to Generate:</strong> Number of musical bars the AI will create (longer compositions = more bars)</li>
+                    <li><strong>Temperature:</strong> Controls randomness (higher = more creative but less predictable)</li>
+                    <li><strong>Top-K:</strong> Limits options AI considers (lower = more focused on most likely notes)</li>
+                  </ul>
+                </div>
+              )}
+              
+              <div className="slider-container">
+                {renderParameterSlider(
+                  'nTargetBar',
+                  'Bars to Generate',
+                  1,
+                  16,
+                  1,
+                  'Number of musical bars the AI will generate'
+                )}
+                
+                {renderParameterSlider(
+                  'temperature',
+                  'Temperature',
+                  0.1,
+                  1.5,
+                  0.1,
+                  'Controls randomness in generated music (higher = more diverse)'
+                )}
+                
+                {renderParameterSlider(
+                  'topk',
+                  'Top-K',
+                  1,
+                  50,
+                  1,
+                  'How many options the AI considers at each step (lower = more focused)'
+                )}
+              </div>
             </div>
           </div>
 
-          {isRecording && startTime && (
-            <div className="recording-indicator">
-              Recording... {Math.max(0, Math.floor((Date.now() - startTime) / 1000))}s
-            </div>
-          )}
+          {/* Right column for piano and recording controls */}
+          <div className="right-column">
+            <div className="piano-container">
+              {/* White keys */}
+              <div className="white-keys">
+                {renderPianoKey('Q', 'C4')}
+                {renderPianoKey('W', 'D4')}
+                {renderPianoKey('E', 'E4')}
+                {renderPianoKey('R', 'F4')}
+                {renderPianoKey('T', 'G4')}
+                {renderPianoKey('Y', 'A4')}
+                {renderPianoKey('U', 'B4')}
+                {renderPianoKey('I', 'C5')}
+                {renderPianoKey('O', 'D5')}
+                {renderPianoKey('P', 'E5')}
+                {renderPianoKey('Z', 'F5')}
+                {renderPianoKey('X', 'G5')}
+                {renderPianoKey('C', 'A5')}
+                {renderPianoKey('V', 'B5')}
+              </div>
 
-          {/* Show controls only if not recording AND there are notes */}
-          {!isRecording && recordedNotes.length > 0 && (
-            <div className="recording-controls">
-              <h3>Your Recording</h3>
-              <p>{recordedNotes.filter(n => n.duration > 0).length} notes recorded</p>
-              <div className="control-buttons">
-                <button
-                  className="play-button"
-                  onClick={playRecording}
-                  disabled={isPlaying}
-                >
-                  {isPlaying ? 'Playing...' : 'Play Recording'}
-                </button>
-                <button className="save-button" onClick={saveMidiRecording}>
-                  Generate
-                </button>
+              {/* Black keys */}
+              <div className="black-keys">
+                {renderPianoKey('2', 'C#4', true)}
+                {renderPianoKey('3', 'D#4', true)}
+                {renderPianoKey('5', 'F#4', true)}
+                {renderPianoKey('6', 'G#4', true)}
+                {renderPianoKey('7', 'A#4', true)}
+                {renderPianoKey('9', 'C#5', true)}
+                {renderPianoKey('0', 'D#5', true)}
+                {renderPianoKey('S', 'F#5', true)}
+                {renderPianoKey('D', 'G#5', true)}
+                {renderPianoKey('F', 'A#5', true)}
               </div>
             </div>
-          )}
+
+            {isRecording && startTime && (
+              <div className="recording-indicator">
+                Recording... {Math.max(0, Math.floor((Date.now() - startTime) / 1000))}s
+              </div>
+            )}
+
+            {/* Show controls only if not recording AND there are notes */}
+            {!isRecording && recordedNotes.length > 0 && (
+              <div className="recording-controls">
+                <h3>Your Recording</h3>
+                <p>{recordedNotes.filter(n => n.duration > 0).length} notes recorded</p>
+                <div className="control-buttons">
+                  <button
+                    className="play-button"
+                    onClick={playRecording}
+                    disabled={isPlaying}
+                  >
+                    {isPlaying ? 'Playing...' : 'Play Recording'}
+                  </button>
+                  <button className="save-button" onClick={saveMidiRecording}>
+                    Generate
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

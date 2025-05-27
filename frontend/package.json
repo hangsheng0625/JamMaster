@@ -15,6 +15,7 @@
     "ml5": "^1.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sweetalert2": "^11.22.0",
     "tone": "^15.0.4"
   },
   "devDependencies": {

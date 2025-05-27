@@ -7,43 +7,12 @@ const LoadingPage = ({ onLoadingComplete, originalNotes }) => {
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('Starting enhancement...');
 
+  // Remove the existing useEffect and add this
   useEffect(() => {
-    // Create an array of status messages to show during loading
-    const statusMessages = [
-      'Starting enhancement...',
-      'Analyzing your melody...',
-      'Creating harmony patterns...',
-      'Generating accompaniment...',
-      'Adding musical textures...',
-      'Finalizing enhancement...'
-    ];
-
-    // Set interval to update progress bar
-    const progressInterval = setInterval(() => {
-      setProgress(prevProgress => {
-        // Calculate new progress
-        const newProgress = prevProgress + (100 / 3); // 15 seconds total
-        
-        // Update status message at certain progress points
-        const messageIndex = Math.floor((newProgress / 100) * (statusMessages.length - 1));
-        setStatusMessage(statusMessages[Math.min(messageIndex, statusMessages.length - 1)]);
-        
-        // Complete when we reach 100%
-        if (newProgress >= 100) {
-          clearInterval(progressInterval);
-          setTimeout(() => {
-            onLoadingComplete(true); // Signal completion to parent component
-          }, 500); // Short delay to ensure progress bar shows 100%
-          return 100;
-        }
-        
-        return newProgress;
-      });
-    }, 1000); // Update every second
+    if (isIndeterminate) return; // Don't start timer
     
-    // Clear interval on component unmount
-    return () => clearInterval(progressInterval);
-  }, [onLoadingComplete]);
+    // Original interval setup...
+  }, [isIndeterminate, onLoadingComplete]);
 
   return (
     <div className="loading-card">
@@ -62,13 +31,18 @@ const LoadingPage = ({ onLoadingComplete, originalNotes }) => {
     <p className="status-message">{statusMessage}</p>
     
     <div className="progress-container">
-        <div className="progress-bar">
-        <div 
-            className="progress-fill" 
-            style={{ width: `${progress}%` }}
-        ></div>
-        </div>
-        <p className="progress-text">{Math.round(progress)}% Complete</p>
+      {isIndeterminate ? (
+      <div className="indeterminate-loader"></div>
+        ) : (
+        <div>
+          <div className="progress-bar">
+          <div 
+              className="progress-fill" 
+              style={{ width: `${progress}%` }}
+          ></div>
+          </div>
+          <p className="progress-text">{Math.round(progress)}% Complete</p>
+        </div>)}
     </div>
     
     <p className="waiting-message">Please wait while we process your audio</p>
