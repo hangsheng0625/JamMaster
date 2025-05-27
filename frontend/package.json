@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "lucide-react": "^0.485.0",
+    "midi-parser-js": "^4.0.4",
     "midi-player-js": "^2.0.16",
     "ml5": "^1.0.1",
     "react": "^19.0.0",

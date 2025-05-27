@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as Tone from 'tone';
 import robot from '../assets/robot.png';
+import MidiParser from 'midi-parser-js';
 import trebleClef from '../assets/treble_clef.png';
 import beamedNote from '../assets/beamed_note.png';
 import '../styles/result.css';
@@ -59,220 +60,282 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
 
     // MIDI parsing functions (copied from AudioPlayPage)
     const parseMidiFile = async (file) => {
-        try {
-            setLoadingMidi(true);
-            setMidiError('');
-            
-            const arrayBuffer = await file.arrayBuffer();
-            const midiData = parseMIDI(arrayBuffer);
-            
-            if (midiData && midiData.tracks && midiData.tracks.length > 0) {
-                setMidiData(midiData);
-                const totalDuration = calculateMidiDuration(midiData);
-                setOriginalDuration(totalDuration);
-                return true;
-            } else {
-                throw new Error('Invalid MIDI file format');
-            }
-        } catch (error) {
-            console.error('Error parsing MIDI file:', error);
-            setMidiError('Failed to parse MIDI file. Please ensure it\'s a valid MIDI file.');
-            return false;
-        } finally {
-            setLoadingMidi(false);
+    try {
+        setLoadingMidi(true);
+        setMidiError('');
+        
+        const arrayBuffer = await file.arrayBuffer();
+        const midiArray = new Uint8Array(arrayBuffer);
+        
+        // Verify basic MIDI structure
+        if (midiArray.length < 14 || 
+            String.fromCharCode(...midiArray.slice(0, 4)) !== 'MThd') {
+            throw new Error('Invalid MIDI file header');
         }
-    };
+        
+        const midiData = MidiParser.parse(midiArray);
+        
+        if (!midiData?.header?.ticksPerBeat || !midiData.tracks) {
+            throw new Error('Invalid MIDI structure');
+        }
+        
+        const formatted = processMidiData(midiData);
+        setMidiData(formatted);
+        setOriginalDuration(formatted.duration);
+        return true;
+    } catch (error) {
+        console.error('MIDI parsing error:', error);
+        setMidiError(`Failed to parse MIDI: ${error.message}`);
+        return false;
+    } finally {
+        setLoadingMidi(false);
+    }
+};
 
-    // Enhanced MIDI parsing function - FIXED VERSION
-    const parseEnhancedMidiFile = async (url) => {
-        try {
-            setLoadingEnhancedMidi(true);
-            setEnhancedMidiError('');
-            
-            console.log('Parsing enhanced MIDI from URL:', url);
-            
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch enhanced MIDI: ${response.status} ${response.statusText}`);
+    const processMidiData = (midi) => {
+    // Ensure we have valid header data
+    if (!midi.header || !midi.header.ticksPerBeat) {
+        throw new Error('Invalid MIDI header data');
+    }
+
+    const ticksPerBeat = midi.header.ticksPerBeat;
+    let microsecsPerBeat = 500000; // Default 120 BPM
+    let currentTime = 0;
+    let maxTime = 0;
+
+    const processedTracks = midi.tracks.map(track => {
+        const events = [];
+        let trackTime = 0;
+
+        track.events.forEach(event => {
+            // Handle tempo changes
+            if (event.type === 0xFF && event.metaType === 0x51 && event.data?.length === 3) {
+                microsecsPerBeat = (event.data[0] << 16) | (event.data[1] << 8) | event.data[2];
+                return;
             }
-            
-            const arrayBuffer = await response.arrayBuffer();
-            console.log('Enhanced MIDI ArrayBuffer size:', arrayBuffer.byteLength);
-            
-            if (arrayBuffer.byteLength === 0) {
-                throw new Error('Enhanced MIDI file is empty');
+
+            // Calculate delta time in seconds
+            const deltaSeconds = (event.deltaTime / ticksPerBeat) * (microsecsPerBeat / 1000000);
+            trackTime += deltaSeconds;
+
+            if (event.type === 0x90 && event.velocity > 0) { // Note on
+                events.push({
+                    type: 'noteOn',
+                    time: trackTime,
+                    note: midiNoteToName(event.noteNumber),
+                    velocity: event.velocity
+                });
+            } else if (event.type === 0x80 || (event.type === 0x90 && event.velocity === 0)) { // Note off
+                events.push({
+                    type: 'noteOff',
+                    time: trackTime,
+                    note: midiNoteToName(event.noteNumber)
+                });
             }
-            
-            const midiData = parseMIDI(arrayBuffer);
-            
-            if (midiData && midiData.tracks && midiData.tracks.length > 0) {
-                console.log('Enhanced MIDI parsed successfully:', midiData);
-                setEnhancedMidiData(midiData);
-                const totalDuration = calculateMidiDuration(midiData);
-                setEnhancedDuration(totalDuration);
-                console.log('Enhanced MIDI duration:', totalDuration);
-                return true;
-            } else {
-                throw new Error('Invalid enhanced MIDI file format');
+
+            // Track maximum time
+            if (trackTime > maxTime) {
+                maxTime = trackTime;
             }
-        } catch (error) {
-            console.error('Error parsing enhanced MIDI file:', error);
-            setEnhancedMidiError(`Failed to parse enhanced MIDI file: ${error.message}`);
-            return false;
-        } finally {
-            setLoadingEnhancedMidi(false);
-        }
+        });
+
+        return { events };
+    });
+
+    return {
+        duration: maxTime * 1000, // Convert to milliseconds
+        tracks: processedTracks
     };
+};
 
     const parseMIDI = (arrayBuffer) => {
-        const view = new DataView(arrayBuffer);
-        let offset = 0;
-        
-        const headerChunk = String.fromCharCode(...new Uint8Array(arrayBuffer, 0, 4));
-        if (headerChunk !== 'MThd') {
-            throw new Error('Not a valid MIDI file');
-        }
-        
-        offset += 4;
-        const headerLength = view.getUint32(offset);
-        offset += 4;
-        
-        const format = view.getUint16(offset);
-        offset += 2;
-        const trackCount = view.getUint16(offset);
-        offset += 2;
-        const division = view.getUint16(offset);
-        offset += 2;
-        
-        const tracks = [];
-        
-        for (let i = 0; i < trackCount; i++) {
-            if (offset + 8 > arrayBuffer.byteLength) break;
-            
-            const trackChunk = String.fromCharCode(...new Uint8Array(arrayBuffer, offset, 4));
-            if (trackChunk !== 'MTrk') {
-                console.warn(`Expected MTrk, got ${trackChunk} at track ${i}`);
-                break;
-            }
-            offset += 4;
-            
-            const trackLength = view.getUint32(offset);
-            offset += 4;
-            
-            if (offset + trackLength > arrayBuffer.byteLength) {
-                console.warn(`Track ${i} extends beyond file bounds`);
-                break;
-            }
-            
-            const trackData = new Uint8Array(arrayBuffer, offset, trackLength);
-            const events = parseTrackEvents(trackData, division);
-            tracks.push({ events });
-            
-            offset += trackLength;
-        }
-        
-        return {
-            format,
-            trackCount,
-            division,
-            tracks
-        };
+    const view = new DataView(arrayBuffer);
+    let offset = 0;
+    
+    const headerChunk = String.fromCharCode(...new Uint8Array(arrayBuffer, 0, 4));
+    if (headerChunk !== 'MThd') {
+        throw new Error('Not a valid MIDI file');
+    }
+
+    // Simplified note name conversion
+    const midiNoteToName = (midiNote) => {
+        const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        return notes[midiNote % 12] + Math.floor(midiNote / 12 - 1);
     };
+    
+    offset += 4;
+    const headerLength = view.getUint32(offset);
+    offset += 4;
+    
+    const format = view.getUint16(offset);
+    offset += 2;
+    const trackCount = view.getUint16(offset); // <-- This was missing
+    offset += 2;
+    const rawDivision = view.getUint16(offset);
+    offset += 2;
+
+    // Parse division correctly (handle SMPTE and ticks per quarter note)
+    let division;
+    if (rawDivision & 0x8000) {
+        // SMPTE format
+        const framesPerSecond = (-(rawDivision >> 8)) & 0xFF;
+        const ticksPerFrame = rawDivision & 0xFF;
+        division = {
+            smpte: true,
+            framesPerSecond: framesPerSecond,
+            ticksPerFrame: ticksPerFrame
+        };
+    } else {
+        // Ticks per quarter note
+        division = {
+            smpte: false,
+            ticksPerQuarter: rawDivision
+        };
+    }
+    
+    const tracks = [];
+    
+    for (let i = 0; i < trackCount; i++) {
+        if (offset + 8 > arrayBuffer.byteLength) break;
+        
+        const trackChunk = String.fromCharCode(...new Uint8Array(arrayBuffer, offset, 4));
+        if (trackChunk !== 'MTrk') {
+            console.warn(`Expected MTrk, got ${trackChunk} at track ${i}`);
+            break;
+        }
+        offset += 4;
+        
+        const trackLength = view.getUint32(offset);
+        offset += 4;
+        
+        if (offset + trackLength > arrayBuffer.byteLength) {
+            console.warn(`Track ${i} extends beyond file bounds`);
+            break;
+        }
+        
+        const trackData = new Uint8Array(arrayBuffer, offset, trackLength);
+        const events = parseTrackEvents(trackData, division);
+        tracks.push({ events });
+        
+        offset += trackLength;
+    }
+    
+    return {
+        format,
+        trackCount,
+        division,
+        tracks
+    };
+};
 
     const parseTrackEvents = (trackData, division) => {
-        const events = [];
-        let offset = 0;
-        let currentTime = 0;
-        let runningStatus = 0;
-        let tempo = 500000; // Default tempo (120 BPM)
+    const events = [];
+    let offset = 0;
+    let currentTimeTicks = 0;
+    let currentTimeSeconds = 0;
+    let currentTempo = 500000; // Default tempo (120 BPM)
+    let lastTempoChangeTicks = 0;
+    let lastTempoChangeSeconds = 0;
+
+    let runningStatus = 0;
+    
+    while (offset < trackData.length) {
+        // Parse deltaTime
+        let deltaTime = 0;
+        let byte;
+        do {
+            if (offset >= trackData.length) break;
+            byte = trackData[offset++];
+            deltaTime = (deltaTime << 7) | (byte & 0x7F);
+        } while (byte & 0x80);
+
+        currentTimeTicks += deltaTime;
+
+        // Calculate time considering tempo changes
+        if (division.smpte) {
+            // SMPTE time handling (not commonly used, adjust if needed)
+            const frameTime = 1 / (division.framesPerSecond * division.ticksPerFrame);
+            currentTimeSeconds += deltaTime * frameTime;
+        } else {
+            // Calculate time from last tempo change in ticks
+            const ticksSinceLastTempo = currentTimeTicks - lastTempoChangeTicks;
+            const secondsSinceLastTempo = (ticksSinceLastTempo / division.ticksPerQuarter) * (currentTempo / 1000000);
+            currentTimeSeconds = lastTempoChangeSeconds + secondsSinceLastTempo;
+        }
+
+        if (offset >= trackData.length) break;
         
-        while (offset < trackData.length) {
-            // Parse variable-length delta time
-            let deltaTime = 0;
-            let byte;
+        let status = trackData[offset];
+        
+        // Handle running status
+        if (status < 0x80) {
+            status = runningStatus;
+        } else {
+            offset++;
+            runningStatus = status;
+        }
+        
+        const eventType = status & 0xF0;
+        const channel = status & 0x0F;
+        
+        // Handle note events
+        if (eventType === 0x90 || eventType === 0x80) {
+            if (offset + 1 >= trackData.length) break;
+            
+            const note = trackData[offset++];
+            const velocity = trackData[offset++];
+            
+            const noteName = midiNoteToName(note);
+            
+            events.push({
+                type: (eventType === 0x90 && velocity > 0) ? 'noteOn' : 'noteOff',
+                time: currentTimeSeconds,
+                note: noteName,
+                velocity: velocity,
+                channel: channel
+            });
+        } 
+        // Handle meta events
+        else if (status === 0xFF) {
+            if (offset >= trackData.length) break;
+            const metaType = trackData[offset++];
+            
+            // Parse meta event length
+            let metaLength = 0;
             do {
                 if (offset >= trackData.length) break;
                 byte = trackData[offset++];
-                deltaTime = (deltaTime << 7) | (byte & 0x7F);
+                metaLength = (metaLength << 7) | (byte & 0x7F);
             } while (byte & 0x80);
             
-            currentTime += deltaTime;
-            
-            if (offset >= trackData.length) break;
-            
-            let status = trackData[offset];
-            
-            // Handle running status
-            if (status < 0x80) {
-                status = runningStatus;
+            // Handle tempo change
+            if (metaType === 0x51 && metaLength === 3 && offset + 2 < trackData.length) {
+                currentTempo = (trackData[offset] << 16) | (trackData[offset + 1] << 8) | trackData[offset + 2];
+                lastTempoChangeTicks = currentTimeTicks;
+                lastTempoChangeSeconds = currentTimeSeconds;
+                offset += metaLength;
             } else {
-                offset++;
-                runningStatus = status;
+                offset += metaLength;
             }
             
-            const eventType = status & 0xF0;
-            const channel = status & 0x0F;
-            
-            // Handle note events
-            if (eventType === 0x90 || eventType === 0x80) {
-                if (offset + 1 >= trackData.length) break;
-                
-                const note = trackData[offset++];
-                const velocity = trackData[offset++];
-                
-                const noteName = midiNoteToName(note);
-                const timeInSeconds = (currentTime / division) * (tempo / 1000000);
-                
-                events.push({
-                    type: (eventType === 0x90 && velocity > 0) ? 'noteOn' : 'noteOff',
-                    time: timeInSeconds,
-                    ticks: currentTime,
-                    note: noteName,
-                    velocity: velocity,
-                    channel: channel
-                });
-            } 
-            // Handle meta events
-            else if (status === 0xFF) {
-                if (offset >= trackData.length) break;
-                const metaType = trackData[offset++];
-                
-                // Parse meta event length
-                let metaLength = 0;
-                do {
-                    if (offset >= trackData.length) break;
-                    byte = trackData[offset++];
-                    metaLength = (metaLength << 7) | (byte & 0x7F);
-                } while (byte & 0x80);
-                
-                // Handle tempo change
-                if (metaType === 0x51 && metaLength === 3 && offset + 2 < trackData.length) {
-                    tempo = (trackData[offset] << 16) | (trackData[offset + 1] << 8) | trackData[offset + 2];
-                }
-                
-                offset += metaLength;
-                
-                // End of track
-                if (metaType === 0x2F) {
-                    break;
-                }
-            } 
-            // Handle other channel events
-            else {
-                // Program change and channel pressure (1 data byte)
-                if (eventType === 0xC0 || eventType === 0xD0) {
-                    if (offset < trackData.length) offset++;
-                } 
-                // Other channel events (2 data bytes)
-                else {
-                    if (offset + 1 < trackData.length) offset += 2;
-                    else break;
-                }
+            // End of track
+            if (metaType === 0x2F) {
+                break;
+            }
+        } 
+        // Handle other channel events
+        else {
+            // Skip unsupported events
+            if (eventType === 0xC0 || eventType === 0xD0) {
+                offset++;
+            } else {
+                offset += 2;
             }
         }
-        
-        return events;
-    };
+    }
+    
+    return events;
+};
 
     const midiNoteToName = (midiNote) => {
         const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -531,92 +594,46 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
     };
 
     // --- Play Enhanced Recording Logic - FIXED VERSION ---
+    // --- Playback Functions (Updated) ---
     const playEnhancedRecording = async () => {
-        if (isPlayingEnhanced || !enhancedSynthRef.current || !enhancedMidiData) {
-            console.log('Cannot play enhanced:', {
-                isPlayingEnhanced,
-                hasSynth: !!enhancedSynthRef.current,
-                hasMidiData: !!enhancedMidiData
-            });
-            return;
-        }
-
-        console.log('Starting enhanced playback with data:', enhancedMidiData);
+        if (!enhancedMidiData) return;
 
         await startAudio();
-
-        setEnhancedPlaybackTime(0);
-        let startPosition = 0;
-
-        // Stop any other playback first
-        stopOriginalPlayback(true);
         stopEnhancedPlayback(true);
         
-        Tone.Transport.cancel();
-        Tone.Transport.stop();
-        Tone.Transport.position = 0;
-        
-        if (enhancedSynthRef.current) {
-            enhancedSynthRef.current.releaseAll();
-            enhancedSynthRef.current.dispose();
-            enhancedSynthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
-        }
-        
-        Tone.Transport.start();
-        
-        setIsPlayingEnhanced(true);
-        enhancedScheduledEventsRef.current = [];
-        enhancedStartTimeRef.current = Date.now() - startPosition;
+        enhancedSynthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
+        const now = Tone.now();
 
-        // Schedule Enhanced MIDI events
-        let scheduledEventCount = 0;
-        enhancedMidiData.tracks.forEach((track, trackIndex) => {
-            console.log(`Track ${trackIndex} has ${track.events.length} events`);
-            track.events.forEach((event, eventIndex) => {
-                const eventTimeMs = event.time * 1000;
-                
-                if (eventTimeMs >= startPosition) {
-                    const adjustedTime = (eventTimeMs - startPosition) / 1000;
-                    
-                    if (event.type === 'noteOn') {
-                        const eventId = Tone.Transport.scheduleOnce((time) => {
-                            console.log(`Playing note: ${event.note} at time ${time}`);
-                            enhancedSynthRef.current?.triggerAttack(event.note, time, event.velocity / 127);
-                        }, adjustedTime);
-                        enhancedScheduledEventsRef.current.push(eventId);
-                        scheduledEventCount++;
-                        
-                    } else if (event.type === 'noteOff') {
-                        const eventId = Tone.Transport.scheduleOnce((time) => {
-                            enhancedSynthRef.current?.triggerRelease(event.note, time);
-                        }, adjustedTime);
-                        enhancedScheduledEventsRef.current.push(eventId);
-                        scheduledEventCount++;
-                    }
+        enhancedMidiData.tracks.forEach(track => {
+            track.events.forEach(event => {
+                if (event.type === 'noteOn') {
+                    enhancedSynthRef.current.triggerAttack(
+                        event.note,
+                        now + event.time,
+                        event.velocity / 127
+                    );
+                } else if (event.type === 'noteOff') {
+                    enhancedSynthRef.current.triggerRelease(
+                        event.note,
+                        now + event.time
+                    );
                 }
             });
         });
 
-        console.log(`Scheduled ${scheduledEventCount} enhanced events`);
-
-        // Update progress bar
+        // Start transport and progress tracking
+        Tone.Transport.start();
+        setIsPlayingEnhanced(true);
+        const startTime = Date.now();
+        
         enhancedPlaybackIntervalRef.current = setInterval(() => {
-            const elapsed = Date.now() - enhancedStartTimeRef.current;
+            const elapsed = Date.now() - startTime;
+            setEnhancedPlaybackTime(Math.min(elapsed, enhancedDuration));
             
             if (elapsed >= enhancedDuration) {
-                setEnhancedPlaybackTime(enhancedDuration);
                 stopEnhancedPlayback(false, true);
-            } else {
-                setEnhancedPlaybackTime(elapsed);
             }
         }, 50);
-
-        // Schedule stop at the end
-        const remainingDuration = (enhancedDuration - startPosition) / 1000;
-        const stopEventId = Tone.Transport.scheduleOnce(() => {
-            stopEnhancedPlayback(false, true); 
-        }, remainingDuration);
-        enhancedScheduledEventsRef.current.push(stopEventId);
     };
 
     // --- Stop Original Recording Logic ---
@@ -651,33 +668,42 @@ const ResultPage = ({ onStartNew, enhancedAudioUrl, originalNotes = [], uploaded
 
     // --- Stop Enhanced Recording Logic ---
     const stopEnhancedPlayback = (cancelEvents = true, playbackCompleted = false) => {
-        setIsPlayingEnhanced(false);
-        
-        enhancedPausedAtTimeRef.current = enhancedPlaybackTime;
-        
-        if (enhancedPlaybackIntervalRef.current) {
-            clearInterval(enhancedPlaybackIntervalRef.current);
-            enhancedPlaybackIntervalRef.current = null;
-        }
+    setIsPlayingEnhanced(false);
+    
+    enhancedPausedAtTimeRef.current = enhancedPlaybackTime;
+    
+    if (enhancedPlaybackIntervalRef.current) {
+        clearInterval(enhancedPlaybackIntervalRef.current);
+        enhancedPlaybackIntervalRef.current = null;
+    }
 
-        if (playbackCompleted) {
-            setEnhancedPlaybackTime(enhancedDuration);
-        }
-        
-        if (cancelEvents) {
-            enhancedScheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
-            enhancedScheduledEventsRef.current = [];
+    if (playbackCompleted) {
+        setEnhancedPlaybackTime(enhancedDuration);
+    }
+    
+    if (cancelEvents) {
+        enhancedScheduledEventsRef.current.forEach(id => Tone.Transport.clear(id));
+        enhancedScheduledEventsRef.current = [];
 
-            if (enhancedSynthRef.current) {
-                enhancedSynthRef.current.releaseAll();
-            }
+        if (enhancedSynthRef.current) {
+            // Force release all notes to prevent hanging notes
+            enhancedSynthRef.current.releaseAll();
             
-            // Don't cancel Transport here if original is playing
-            if (!isPlayingOriginal) {
-                Tone.Transport.cancel();
+            // Additional cleanup - dispose and recreate synth if needed
+            if (cancelEvents && !isPlayingOriginal) {
+                enhancedSynthRef.current.dispose();
+                enhancedSynthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
             }
         }
-    };
+        
+        // Don't cancel Transport here if original is playing
+        if (!isPlayingOriginal) {
+            Tone.Transport.cancel();
+            Tone.Transport.stop();
+            Tone.Transport.position = 0;
+        }
+    }
+};
 
     // --- Button Handlers ---
     const handlePlayPauseOriginal = () => {
